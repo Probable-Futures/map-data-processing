@@ -33,7 +33,13 @@ derived_vars <-
     "prop-months-lte-neg1.6-spei",
     "days-gte-b95perc-fwi",
     
-    "prop-days-gte-b85perc-3dayrunmeantasmin")[25] # choose derived variable(s) to assemble
+    # "prop-days-gte-b85perc-3dayrunmeantasmin"
+    
+    "prop-days-gte-b90perc-3dayrunmeantasmax",
+    "mean-cont-days-gte-b90perc-3dayrunmeantasmax",
+    "mean-tas-gte-b90perc-3dayrunmeantasmax"
+    
+    )[27] # choose derived variable(s) to assemble
 
 
 
@@ -82,14 +88,34 @@ tb_vars <-
   suppressMessages()
 
 
-# *****************
+# ***************** HEAT WAVES ADDITION!
+
+# tb_vars %>% 
+#   rbind(c("minimum_temperature",
+#           "prop-days-gte-b85perc-3dayrunmeantasmin",
+#           "nothing",
+#           "likelihood-heat-wave",
+#           "n"
+#   )) -> tb_vars
+
 tb_vars %>% 
-  rbind(c("minimum_temperature",
-          "prop-days-gte-b85perc-3dayrunmeantasmin",
+  rbind(c("maximum_temperature",
+          "prop-days-gte-b90perc-3dayrunmeantasmax",
           "nothing",
           "likelihood-heat-wave",
-          "y"
-  )) -> tb_vars
+          "n")) %>% 
+  rbind(c("maximum_temperature",
+          "mean-cont-days-gte-b90perc-3dayrunmeantasmax",
+          "nothing",
+          "duration-heat-wave",
+          "n")) %>% 
+  rbind(c("maximum_temperature",
+          "mean-tas-gte-b90perc-3dayrunmeantasmax",
+          "convert-C",
+          "intensity-heat-wave",
+          "n")) -> tb_vars
+
+
 # *****************
 
 
@@ -126,7 +152,9 @@ for(dom in doms){
       dir_derived %>% 
       list.files() %>% 
       str_subset(dom) %>% 
-      str_subset(derived_var)
+      str_subset(derived_var) %>% 
+      
+      str_subset("v2")                                                          # ***************************************
     
     
     # import files into a list
@@ -405,7 +433,9 @@ for(dom in doms){
           st_apply(c(1,2), function(ts){
             
             # if a given grid cell is empty, propagate NAs
-            if(any(is.na(ts))){
+            # if(any(is.na(ts))){
+            ### fix for heatwave intensity: 
+            if(all(is.na(ts))){
               
               c(mean = NA,
                 perc05 = NA, 
@@ -414,8 +444,12 @@ for(dom in doms){
               
             } else {
               
-              c(mean = mean(ts),
-                quantile(ts, c(0.05, 0.5, 0.95)) %>% 
+              # c(mean = mean(ts),
+              #   quantile(ts, c(0.05, 0.5, 0.95)) %>% 
+              #     setNames(c("perc05", "perc50", "perc95")))
+              
+              c(mean = mean(ts, na.rm = T),
+                quantile(ts, c(0.05, 0.5, 0.95), na.rm = T) %>% 
                   setNames(c("perc05", "perc50", "perc95")))
               
             }

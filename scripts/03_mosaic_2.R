@@ -19,19 +19,27 @@ derived_vars <-
     "days-gte-32C-wetbulb",
     "ten-hottest-days-wetbulb", # 15
     
-    "mean-tasmean", # 16
+    "mean-tasmean",
     
     "total-precip",
     "ninety-wettest-days",
+    # "100yr-storm-precip",
+    # "100yr-storm-freq",
     "days-gte-1mm-precip-lt-0C-tasmean",
-    "days-gte-b90perc-tasmax-lt-b10perc-precip", # 20
+    "days-gte-b90perc-tasmax-lt-b10perc-precip", #20
     
     "mean-spei",
     "prop-months-lte-neg0.8-spei",
     "prop-months-lte-neg1.6-spei",
     "days-gte-b95perc-fwi",
     
-    "prop-days-gte-b85perc-3dayrunmeantasmin")[25] # choose derived variable(s) to assemble
+    # "prop-days-gte-b85perc-3dayrunmeantasmin"
+    
+    "prop-days-gte-b90perc-3dayrunmeantasmax",
+    "mean-cont-days-gte-b90perc-3dayrunmeantasmax",
+    "mean-tas-gte-b90perc-3dayrunmeantasmax"
+    
+  )[27] # choose derived variable(s) to assemble
 
 
 
@@ -74,15 +82,37 @@ tb_vars <-
 #   tb_vars %>% 
 #   filter(var_input == {{var_input}})
 
-# *****************
+
+# ***************** HEAT WAVES ADDITION!
+
+# tb_vars %>% 
+#   rbind(c("minimum_temperature",
+#           "prop-days-gte-b85perc-3dayrunmeantasmin",
+#           "nothing",
+#           "likelihood-heat-wave",
+#           "n"
+#   )) -> tb_vars
+
 tb_vars %>% 
-  rbind(c("minimum_temperature",
-          "prop-days-gte-b85perc-3dayrunmeantasmin",
+  rbind(c("maximum_temperature",
+          "prop-days-gte-b90perc-3dayrunmeantasmax",
           "nothing",
           "likelihood-heat-wave",
-          "y"
-  )) -> tb_vars
+          "n")) %>% 
+  rbind(c("maximum_temperature",
+          "mean-cont-days-gte-b90perc-3dayrunmeantasmax",
+          "nothing",
+          "duration-heat-wave",
+          "n")) %>% 
+  rbind(c("maximum_temperature",
+          "mean-tas-gte-b90perc-3dayrunmeantasmax",
+          "nothing",
+          "intensity-heat-wave",
+          "n")) -> tb_vars
+
+
 # *****************
+
 
 
 # PRE-PROCESS -----------------------------------------------------------------
@@ -426,6 +456,7 @@ walk(derived_vars, function(derived_var){
     })
   
   
+  # if(str_detect(final_name, "change") | final_name == "intensity-heat-wave"){            # ***** "intensity-heat-wave"
   if(str_detect(final_name, "change")){
 
     print(str_glue("Calculating differences"))
@@ -470,8 +501,14 @@ walk(derived_vars, function(derived_var){
           mutate(a = round(a, 1)) %>%
           setNames(wl)
         
+      # } else if(final_name == "intensity-heat-wave") {                            # ************** intensity !!!!
+      #   
+      #   s %>%     
+      #     rename(a = 1) %>%
+      #     mutate(a = round(a, 2)) %>%
+      #     setNames(wl)
         
-      } else if(str_detect(final_name, "drought") | str_detect(final_name, "heat-wave")){
+      } else if(str_detect(final_name, "drought") | str_detect(final_name, "likelihood-heat-wave")){
         
         s %>%
           rename(a = 1) %>%
