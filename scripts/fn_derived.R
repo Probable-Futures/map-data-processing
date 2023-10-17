@@ -1,6 +1,7 @@
 
 fn_derived <- function(derived_var){
   
+  
   outfile <-
     str_glue("{dir_derived}/{dom}_{derived_var}_yr_{rcm_}_{gcm_}.nc")
   
@@ -10,13 +11,12 @@ fn_derived <- function(derived_var){
   }
   
   
-  # HEAT VOLUME ---------------------------------------------------------------
   
   
-  ## MAX TEMPERATURE ------------------------------
+  # HEAT VOLUME: TASMAX -------------------------------------------------------
   
   
-  if(derived_var == "days-gte-32C-tasmax"){
+  if (derived_var == "days-gte-32C-tasmax") {
     
     set_units(32, degC) %>%
       set_units(K) %>%
@@ -30,7 +30,7 @@ fn_derived <- function(derived_var){
     # *************
     
     
-  } else if(derived_var == "days-gte-35C-tasmax"){
+  } else if (derived_var == "days-gte-35C-tasmax") {
     
     set_units(35, degC) %>%
       set_units(K) %>%
@@ -44,7 +44,7 @@ fn_derived <- function(derived_var){
     # *************
     
     
-  } else if(derived_var == "days-gte-38C-tasmax"){
+  } else if (derived_var == "days-gte-38C-tasmax") {
     
     set_units(38, degC) %>%
       set_units(K) %>%
@@ -58,9 +58,9 @@ fn_derived <- function(derived_var){
     # *************
     
     
-  } else if(derived_var == "ten-hottest-days-tasmax"){
+  } else if (derived_var == "ten-hottest-days-tasmax") {
     
-    dir_temp <- str_glue("{dir_tmp}/dir_temp")
+    dir_temp <- str_glue("{dir_disk}/dir_temp")
     dir.create(dir_temp)
     
     # loop through annual files
@@ -98,7 +98,7 @@ fn_derived <- function(derived_var){
     # *************
     
     
-  } else if(derived_var == "mean-tasmax"){
+  } else if (derived_var == "mean-tasmax") {
     
     str_glue("cdo yearmean {dir_cat}/{v}_cat.nc {outfile}") %>%
       system(ignore.stdout = T, ignore.stderr = T)
@@ -108,7 +108,7 @@ fn_derived <- function(derived_var){
     # *************
     
     
-  } else if(derived_var == "days-lt-0C-tasmax"){
+  } else if (derived_var == "days-lt-0C-tasmax") {
     
     set_units(0, degC) %>%
       set_units(K) %>%
@@ -119,21 +119,88 @@ fn_derived <- function(derived_var){
     
     
     
+    # *************
     
-    ## AVERAGE TEMPERATURE --------------------------
+    
+  } else if (derived_var == "prop-days-gte-b90perc-3dayrunmean-tasmax") {
+    
+    # select 90 hottest days per year within baseline
+    dir_raw_data %>%
+      list.files() %>%
+      str_subset(seq(1971,2000) %>% str_flatten("|")) %>% 
+      future_walk(function(f){
+        
+        # obtain length of time dimension
+        time_length <-
+          str_glue("{dir_raw_data}/{f}") %>%
+          read_ncdf(proxy = T, make_time = F) %>%
+          suppressMessages() %>%
+          dim() %>%
+          .[3]
+        
+        # sort across time >> slice last 90 days >> calculate the mean
+        str_glue("cdo -seltimestep,{time_length-89}/{time_length} -timsort {dir_raw_data}/{f} {dir_cat}/mean_sel_{f}") %>%
+          system(ignore.stdout = T, ignore.stderr = T)
+        
+      })
+    
+    # concatenate
+    dir_cat %>%
+      list.files(full.names = T) %>%
+      str_subset("mean_sel") %>% 
+      str_flatten(" ") %>%
+      
+      {system(str_glue("cdo cat {.} {dir_cat}/ninety_hottest_days.nc"),
+              ignore.stdout = T, ignore.stderr = T)}
+    
+    # remove intermediate files
+    dir_cat %>%
+      list.files(full.names = T) %>%
+      str_subset("mean_sel") %>% 
+      walk(file.remove)
+    
+    # obtain threshold (90th percentile)
+    "cdo timpctl,90 {dir_cat}/ninety_hottest_days.nc -timmin {dir_cat}/ninety_hottest_days.nc -timmax {dir_cat}/ninety_hottest_days.nc {dir_cat}/threshold.nc" %>% 
+      str_glue() %>% 
+      system(ignore.stdout = T, ignore.stderr = T)
     
     
-  } else if(derived_var == "mean-tasmean"){
+    # 3-day running mean
+    "cdo runmean,3 {dir_cat}/{v}_cat.nc {dir_cat}/run_mean.nc" %>% 
+      str_glue() %>% 
+      system(ignore.stdout = T, ignore.stderr = T)
+    # The time of outfile is determined by the time in the middle of all contributing timesteps of infile. 
+    # This can be change with the CDO option --timestat_date <first|middle|last>.
+    
+
+    # obain prop of days above threshold
+    "cdo yearmean -gec,0 -sub {dir_cat}/run_mean.nc {dir_cat}/threshold.nc {outfile}" %>%
+      str_glue() %>%
+      system(ignore.stdout = T, ignore.stderr = T)
+    
+    # remove additional intermediate files
+    file.remove(str_glue("{dir_cat}/ninety_hottest_days.nc"),
+                str_glue("{dir_cat}/run_mean.nc"),
+                str_glue("{dir_cat}/threshold.nc"))
+      
+      
+    
+    
+    # HEAT VOLUME: TAS --------------------------------------------------------
+    
+    
+  } else if (derived_var == "mean-tasmean") {
     
     str_glue("cdo yearmean {dir_cat}/{v}_cat.nc {outfile}") %>%
       system(ignore.stdout = T, ignore.stderr = T)
     
     
     
-    ## MIN TEMPERATURE ------------------------------ 
+    
+    # HEAT VOLUME: TASMIN ----------------------------------------------------- 
     
     
-  } else if(derived_var == "days-gte-20C-tasmin"){
+  } else if (derived_var == "days-gte-20C-tasmin") {
     
     set_units(20, degC) %>%
       set_units(K) %>%
@@ -147,7 +214,7 @@ fn_derived <- function(derived_var){
     # *************
     
     
-  } else if(derived_var == "days-gte-25C-tasmin"){
+  } else if (derived_var == "days-gte-25C-tasmin") {
     
     set_units(25, degC) %>%
       set_units(K) %>%
@@ -161,7 +228,47 @@ fn_derived <- function(derived_var){
     # *************
     
     
-  } else if(derived_var == "mean-tasmin"){
+  } else if (derived_var == "ten-hottest-days-tasmin") {
+    
+    dir_temp <- str_glue("{dir_disk}/dir_temp")
+    dir.create(dir_temp)
+    
+    # loop through annual files
+    dir_raw_data %>%
+      list.files() %>%
+      future_walk(function(f){
+        
+        # obtain length of time dimension
+        time_length <-
+          str_glue("{dir_raw_data}/{f}") %>%
+          read_ncdf(proxy = T, make_time = F) %>%
+          suppressMessages() %>%
+          dim() %>%
+          .[3]
+        
+        # sort across time >> slice last 10 days >> calculate the mean
+        str_glue("cdo -timmean -seltimestep,{time_length-9}/{time_length} -timsort {dir_raw_data}/{f} {dir_temp}/mean_sel_{f}") %>%
+          system(ignore.stdout = T, ignore.stderr = T)
+        
+      })
+    
+    # concatenate and save
+    dir_temp %>%
+      list.files(full.names = T) %>%
+      str_flatten(" ") %>%
+      
+      {system(str_glue("cdo cat {.} {outfile}"),
+              ignore.stdout = T, ignore.stderr = T)}
+    
+    # delete intermediate files
+    unlink(dir_temp, recursive = T)
+    
+    
+    
+    # *************
+    
+    
+  } else if (derived_var == "mean-tasmin") {
     
     str_glue("cdo yearmean {dir_cat}/{v}_cat.nc {outfile}") %>%
       system(ignore.stdout = T, ignore.stderr = T)
@@ -171,7 +278,7 @@ fn_derived <- function(derived_var){
     # *************
     
     
-  } else if(derived_var == "days-lt-0C-tasmin"){
+  } else if (derived_var == "days-lt-0C-tasmin") {
     
     set_units(0, degC) %>%
       set_units(K) %>%
@@ -182,7 +289,74 @@ fn_derived <- function(derived_var){
     
     
     
-    ## WETBULB TEMPERATURE --------------------------
+    # *************
+    
+    
+  } else if (derived_var == "prop-days-gte-b90perc-3dayrunmean-tasmin") {
+    
+    # select 90 hottest days per year within baseline
+    dir_raw_data %>%
+      list.files() %>%
+      str_subset(seq(1971,2000) %>% str_flatten("|")) %>% 
+      future_walk(function(f){
+        
+        # obtain length of time dimension
+        time_length <-
+          str_glue("{dir_raw_data}/{f}") %>%
+          read_ncdf(proxy = T, make_time = F) %>%
+          suppressMessages() %>%
+          dim() %>%
+          .[3]
+        
+        # sort across time >> slice last 90 days >> calculate the mean
+        str_glue("cdo -seltimestep,{time_length-89}/{time_length} -timsort {dir_raw_data}/{f} {dir_cat}/mean_sel_{f}") %>%
+          system(ignore.stdout = T, ignore.stderr = T)
+        
+      })
+    
+    # concatenate
+    dir_cat %>%
+      list.files(full.names = T) %>%
+      str_subset("mean_sel") %>% 
+      str_flatten(" ") %>%
+      
+      {system(str_glue("cdo cat {.} {dir_cat}/ninety_hottest_days.nc"),
+              ignore.stdout = T, ignore.stderr = T)}
+    
+    # remove intermediate files
+    dir_cat %>%
+      list.files(full.names = T) %>%
+      str_subset("mean_sel") %>% 
+      walk(file.remove)
+    
+    # obtain threshold (90th percentile)
+    "cdo timpctl,90 {dir_cat}/ninety_hottest_days.nc -timmin {dir_cat}/ninety_hottest_days.nc -timmax {dir_cat}/ninety_hottest_days.nc {dir_cat}/threshold.nc" %>% 
+      str_glue() %>% 
+      system(ignore.stdout = T, ignore.stderr = T)
+    
+    
+    # 3-day running mean
+    "cdo runmean,3 {dir_cat}/{v}_cat.nc {dir_cat}/run_mean.nc" %>% 
+      str_glue() %>% 
+      system(ignore.stdout = T, ignore.stderr = T)
+    # The time of outfile is determined by the time in the middle of all contributing timesteps of infile. 
+    # This can be change with the CDO option --timestat_date <first|middle|last>.
+    
+    
+    # obain prop of days above threshold
+    "cdo yearmean -gec,0 -sub {dir_cat}/run_mean.nc {dir_cat}/threshold.nc {outfile}" %>%
+      str_glue() %>%
+      system(ignore.stdout = T, ignore.stderr = T)
+    
+    # remove additional intermediate files
+    file.remove(str_glue("{dir_cat}/ninety_hottest_days.nc"),
+                str_glue("{dir_cat}/run_mean.nc"),
+                str_glue("{dir_cat}/threshold.nc"))
+    
+    
+    
+    
+    # HEAT VOLUME: WETBULB TEMPERATURE ----------------------------------------
     
     
   } else if(derived_var == "days-gte-26C-wetbulb"){
@@ -235,7 +409,7 @@ fn_derived <- function(derived_var){
     
   } else if(derived_var == "ten-hottest-days-wetbulb"){
     
-    dir_temp <- str_glue("{dir_tmp}/dir_temp")
+    dir_temp <- str_glue("{dir_disk}/dir_temp")
     dir.create(dir_temp)
     
     # loop through annual files
@@ -271,11 +445,8 @@ fn_derived <- function(derived_var){
     
     
     
-    # WATER VOLUME ----------------------------------------------------------------
-    
-    
-    ## PRECIPITATION --------------------------------
-    
+    # WATER VOLUME: PRECIP -----------------------------------------------------
+      
     
   } else if(derived_var == "total-precip"){
     
@@ -316,7 +487,7 @@ fn_derived <- function(derived_var){
     
     # create temporary directory to save tiles
     
-    dir_tmp <- "/mnt/pers_disk/tmp"
+    dir_tmp <- str_glue("{dir_disk}/tmp")
     dir.create(dir_tmp)
     
     
@@ -441,7 +612,7 @@ fn_derived <- function(derived_var){
     
     
     
-    ## PRECIP + AVG. TEMPERATURE ------------------
+    # WATER VOLUME: PRECIP + AVG. TEMPERATURE ---------------------------------
     
     
   } else if(derived_var == "days-gte-1mm-precip-lt-0C-tasmean"){
@@ -479,7 +650,7 @@ fn_derived <- function(derived_var){
     
     
     
-    ## PRECIP + MAX. TEMPERATURE ------------------
+    # WATER VOLUME: PRECIP + MAX. TEMPERATURE ---------------------------------
     
     
   } else if(derived_var == "days-gte-b90perc-tasmax-lt-b10perc-precip"){
@@ -526,11 +697,8 @@ fn_derived <- function(derived_var){
     
     
     
-    # LAND VOLUME --------------------------------------------------------------
+    # LAND VOLUME: SPEI --------------------------------------------------------
     
-    
-    
-    # SPEI --------------------------------------
     
     
   } else if(derived_var == "mean-spei"){
@@ -560,7 +728,7 @@ fn_derived <- function(derived_var){
     
     
     
-    ## FWI --------------------------------------
+    # LAND VOLUME: FWI ---------------------------------------------------------
     
     
     
@@ -581,6 +749,11 @@ fn_derived <- function(derived_var){
     
     
   }
+  
+  
+  
+  
+  # ***************************************************************************
   
   
   

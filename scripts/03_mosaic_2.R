@@ -1,45 +1,36 @@
 
-derived_vars <- 
-  
-  c("days-gte-32C-tasmax",
-    "days-gte-35C-tasmax",
-    "days-gte-38C-tasmax",
-    "ten-hottest-days-tasmax",
-    "mean-tasmax",
-    "days-lt-0C-tasmax", # 6
-    
-    "days-gte-20C-tasmin",
-    "days-gte-25C-tasmin",
-    "mean-tasmin",
-    "days-lt-0C-tasmin", # 10
-    
-    "days-gte-26C-wetbulb",
-    "days-gte-28C-wetbulb",
-    "days-gte-30C-wetbulb",
-    "days-gte-32C-wetbulb",
-    "ten-hottest-days-wetbulb", # 15
-    
-    "mean-tasmean",
-    
-    "total-precip",
-    "ninety-wettest-days",
-    # "100yr-storm-precip",
-    # "100yr-storm-freq",
-    "days-gte-1mm-precip-lt-0C-tasmean",
-    "days-gte-b90perc-tasmax-lt-b10perc-precip", #20
-    
-    "mean-spei",
-    "prop-months-lte-neg0.8-spei",
-    "prop-months-lte-neg1.6-spei",
-    "days-gte-b95perc-fwi",
-    
-    # "prop-days-gte-b85perc-3dayrunmeantasmin"
-    
-    "prop-days-gte-b90perc-3dayrunmeantasmax",
-    "mean-cont-days-gte-b90perc-3dayrunmeantasmax",
-    "mean-tas-gte-b90perc-3dayrunmeantasmax"
-    
-  )[27] # choose derived variable(s) to assemble
+# CHOOSE VARIABLE(S) TO PROCESS
+var_index <- c(7,10,13)
+
+# 1 - days-above-32C
+# 2 - days-above-35C
+# 3 - days-above-38C
+# 4 - ten-hottest-days
+# 5 - average-daytime-temperature
+# 6 - freezing-days
+# 7 - likelihood-daytime-heatwave
+# 8 - nights-above-20C
+# 9 - nights-above-25C
+# 10 - ten-hottest-nights
+# 11 - average-nighttime-temperature
+# 12 - frost-nights                       
+# 13 - likelihood-nighttime-heatwave
+# 14 - days-above-26C-wetbulb
+# 15 - days-above-28C-wetbulb
+# 16 - days-above-30C-wetbulb
+# 17 - days-above-32C-wetbulb
+# 18 - ten-hottest-wetbulb-days
+# 19 - average-temperature
+# 20 - change-total-annual-precipitation  
+# 21 - change-90-wettest-days
+# 22 - change-100yr-storm-precip
+# 23 - change-100yr-storm-freq
+# 24 - change-snowy-days                  
+# 25 - change-dry-hot-days
+# 26 - change-water-balance
+# 27 - likelihood-yearplus-drought
+# 28 - likelihood-yearplus-extreme-drought
+# 29 - change-wildfire-days               
 
 
 
@@ -54,64 +45,32 @@ library(units)
 options(future.fork.enable = T)
 plan(multicore)
 
-source("scripts/functions.R")
+source("scripts/setup.R") # load main directory routes 
+source("scripts/functions.R") # load functions
 
-dir_ensembled <- "/mnt/bucket_mine/results/global_heat_pf/02_ensembled"
-dir_mosaicked <- "/mnt/bucket_mine/results/global_heat_pf/03_mosaicked/"
+# directory where ensembles are stored
+dir_ensembled <- str_glue("{dir_results}/02_ensembled")
+
+# directory where resulting mosaics with be stored
+dir_mosaicked <- str_glue("{dir_results}/03_mosaicked")
+
 
 doms <- c("SEA", "CAS", "WAS", "EAS", "AFR", "EUR", "NAM", "CAM", "SAM", "AUS")
 
 wls <- c("0.5", "1.0", "1.5", "2.0", "2.5", "3.0")
 
-# # domain centroids
-# tb_dom <- 
-#   tibble(
-#     dom = c("NAM", "CAM", "SAM", "EUR", "AFR", "WAS", "CAS", "SEA", "EAS", "AUS"),
-#     centr_lon = c(263.0-360, 287.29-360, 299.70-360, 9.75, 17.60, 67.18, 74.64, 118.04, 116.57, 147.63),
-#     centr_lat = c(47.28, 10.20, -21.11, 49.68, -1.32, 16.93, 47.82, 6.5, 34.40, -24.26)
-#   )
 
-# load table of variables
-tb_vars <-
-  read_csv("/mnt/bucket_mine/pf_variable_table.csv") %>% 
+# load table of all variables
+tb_vars_all <-
+  read_csv("pf_variable_table.csv") %>% 
   suppressMessages()
 
-
-# subset vars based on input var
-# tb <- 
-#   tb_vars %>% 
-#   filter(var_input == {{var_input}})
+# subset those that will be processed
+tb_vars <- 
+  tb_vars_all[var_index, ]
 
 
-# ***************** HEAT WAVES ADDITION!
-
-# tb_vars %>% 
-#   rbind(c("minimum_temperature",
-#           "prop-days-gte-b85perc-3dayrunmeantasmin",
-#           "nothing",
-#           "likelihood-heat-wave",
-#           "n"
-#   )) -> tb_vars
-
-tb_vars %>% 
-  rbind(c("maximum_temperature",
-          "prop-days-gte-b90perc-3dayrunmeantasmax",
-          "nothing",
-          "likelihood-heat-wave",
-          "n")) %>% 
-  rbind(c("maximum_temperature",
-          "mean-cont-days-gte-b90perc-3dayrunmeantasmax",
-          "nothing",
-          "duration-heat-wave",
-          "n")) %>% 
-  rbind(c("maximum_temperature",
-          "mean-tas-gte-b90perc-3dayrunmeantasmax",
-          "nothing",
-          "intensity-heat-wave",
-          "n")) -> tb_vars
-
-
-# *****************
+derived_vars <- tb_vars$var_derived
 
 
 
@@ -197,6 +156,8 @@ l_s_valid <-
   })
 
 doms_2aus <- c(doms[1:9], "AUS1", "AUS2")
+
+
 
 
 # GLOBAL TEMPLATE
@@ -309,7 +270,8 @@ l_s_weights <-
 # LAND MASK
 
 land <- 
-  "/mnt/bucket_cmip5/Probable_futures/irunde_scripts/create_a_dataset/04_rcm_buffered_ocean_mask.nc" %>% 
+  # "/mnt/bucket_cmip5/Probable_futures/irunde_scripts/create_a_dataset/04_rcm_buffered_ocean_mask.nc" %>% 
+  "buffered_ocean_mask.nc" %>% 
   read_ncdf() %>%
   st_warp(global) %>% 
   setNames("a")
@@ -320,7 +282,8 @@ land <-
 if(any(str_detect(derived_vars, "spei|fwi"))){
   
   barren <- 
-    "/mnt/bucket_cmip5/Probable_futures/land_module/maps/mask_layers/modis_barren_mask_ge90perc_regridto22kmwmean.tif" %>% 
+    # "/mnt/bucket_cmip5/Probable_futures/land_module/maps/mask_layers/modis_barren_mask_ge90perc_regridto22kmwmean.tif" %>%
+    "modis_barren_mask_ge90perc_regridto22kmwmean.tif" %>% 
     read_stars() %>% 
     st_warp(global) %>% 
     setNames("barren")
@@ -328,7 +291,7 @@ if(any(str_detect(derived_vars, "spei|fwi"))){
 
 
 
-# MOSAIC
+# MOSAIC ----------------------------------------------------------------------
 
 # loop through variables
 
@@ -340,7 +303,13 @@ walk(derived_vars, function(derived_var){
   final_name <- 
     tb_vars %>% 
     filter(var_derived == derived_var) %>% 
-    pull(final_name)
+    pull(var_final)
+  
+  vol <- 
+    tb_vars %>% 
+    filter(var_derived == derived_var) %>% 
+    pull(volume)
+  
   
   l_s <- 
     map(doms %>% set_names(), function(dom){
@@ -392,10 +361,6 @@ walk(derived_vars, function(derived_var){
   l_s <- append(l_s[1:9], l_s[[10]])
   
   
-  # if(str_detect(final_name, "freq")){
-  #   wl <- wl[-1]
-  # }
-  
   
   l_mos_wl <- 
     
@@ -410,6 +375,7 @@ walk(derived_vars, function(derived_var){
         map(slice, wl, wl_pos) %>% 
         map(st_warp, global)
       
+      # APPLY WEIGHTS
       l_s_weighted <- 
         
         map2(l_s_wl, l_s_weights, function(s, w){
@@ -421,7 +387,6 @@ walk(derived_vars, function(derived_var){
             c(s %>% select(all_of(v_)) %>% setNames("v"),
               w) %>% 
               
-              # apply weights
               mutate(v = v*weights) %>% 
               select(-weights) %>% 
               setNames(v_)
@@ -431,6 +396,7 @@ walk(derived_vars, function(derived_var){
           
         })
       
+      # MOSAIC
       mos <- 
         l_s_weighted %>%
         map(merge, name = "stats") %>%
@@ -456,7 +422,6 @@ walk(derived_vars, function(derived_var){
     })
   
   
-  # if(str_detect(final_name, "change") | final_name == "intensity-heat-wave"){            # ***** "intensity-heat-wave"
   if(str_detect(final_name, "change")){
 
     print(str_glue("Calculating differences"))
@@ -508,7 +473,7 @@ walk(derived_vars, function(derived_var){
       #     mutate(a = round(a, 2)) %>%
       #     setNames(wl)
         
-      } else if(str_detect(final_name, "drought") | str_detect(final_name, "likelihood-heat-wave")){
+      } else if(str_detect(final_name, "drought") | str_detect(final_name, "heatwave")){
         
         s %>%
           rename(a = 1) %>%
@@ -558,25 +523,91 @@ walk(derived_vars, function(derived_var){
   # save as nc
   print(str_glue("  Saving"))
   
-  file_name <- str_glue("{dir_mosaicked}/heat/v3/{final_name}_v03.nc") # *******************
+  file_name <- str_glue("{dir_mosaicked}/{vol}/v3/{final_name}_v03.nc") # *******************
   fn_write_nc(s, file_name, "wl")
   
 })
 
 
 
-# s2_orig <- "/mnt/bucket_mine/results/global_heat_pf/03_mosaicked/land/" %>% read_ncdf()
-# s2_round_b <- "/mnt/bucket_mine/results/global_heat_pf/03_mosaicked/heat/average-daytime-temperature_v02_1.nc" %>% read_ncdf()
-# s2_round_o <- "/mnt/bucket_mine/results/global_heat_pf/03_mosaicked/heat/average-daytime-temperature_v02_2.nc" %>% read_ncdf()
-# s3 <- "/mnt/bucket_mine/results/global_heat_pf/03_mosaicked/land/likelihood-yearplus-extreme-drought_v03.nc" %>% read_ncdf()
-# 
-# a <- s2_orig - s3
-# a %>% slice(wl, 6) %>% select(1) %>% plot(breaks = "equal")
-# a %>% pull() %>% .[!is.na(.)] %>% .[. > 1]
-# 
-# mean(c(5/12, 2/12, 7/12, 9/12, 3/12, 8/12))
-# mean(c((5+2+7)/(12*3), (9+3+8)/(12*3)))
+
+"/mnt/bucket_mine/results/global_heat_pf/03_mosaicked/heat/v3/ten-hottest-days_v03.nc" %>% read_ncdf() -> a
+
+
+aa <- 
+  map(1:6, function(i){
+  
+  a %>% 
+    select(1) %>% 
+    slice(wl, i)
+  
+})
+
+aa[2:6] %>% 
+  map(function(s){
+    
+    s - aa[[1]]
+    
+  }) %>% 
+  
+  map(function(s){
+    
+    s %>% pull() %>% {sum(. > 2, na.rm = T)}
+    
+  })
+  
+
+
+
+"/mnt/bucket_mine/results/global_heat_pf/03_mosaicked/heat/v3/ten-hottest-nights_v03_beta.nc" %>% read_ncdf() -> b
+
+bb <- 
+  map(1:6, function(i){
+    
+    b %>% 
+      select(1) %>% 
+      slice(wl, i)
+    
+  })
+
+bb[2:6] %>% 
+  map(function(s){
+    
+    s - bb[[1]]
+    
+  }) %>% 
+  
+  map(function(s){
+    
+    s %>% pull() %>% {sum(. > 2, na.rm = T)}
+    
+  })
 
 
 
 
+
+
+
+
+l_mos_wl <-
+  l_mos_wl[2:6] %>%
+  map(function(s){
+    
+    s - l_mos_wl[[1]]
+    
+  }) %>%
+  {append(list(l_mos_wl[[1]]), .)}
+
+do.call(c, c(l_mos_wl, along = "wl")) %>%
+  split("stats") %>% 
+  st_set_dimensions(3, values = as.numeric(wls)) -> s
+
+file_name <- str_glue("{dir_mosaicked}/heat/v3/ten-hottest-days-diff_v03.nc")
+fn_write_nc(s, file_name, "wl")
+
+
+
+
+
+"/mnt/bucket_mine/results/global_heat_pf/03_mosaicked/heat/v3/" %>% list.files(full.names = T) %>% str_subset("beta")

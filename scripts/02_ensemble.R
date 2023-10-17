@@ -1,45 +1,37 @@
 
-derived_vars <- 
-  
-  c("days-gte-32C-tasmax",
-    "days-gte-35C-tasmax",
-    "days-gte-38C-tasmax",
-    "ten-hottest-days-tasmax",
-    "mean-tasmax",
-    "days-lt-0C-tasmax", # 6
-    
-    "days-gte-20C-tasmin",
-    "days-gte-25C-tasmin",
-    "mean-tasmin",
-    "days-lt-0C-tasmin", # 10
-    
-    "days-gte-26C-wetbulb",
-    "days-gte-28C-wetbulb",
-    "days-gte-30C-wetbulb",
-    "days-gte-32C-wetbulb",
-    "ten-hottest-days-wetbulb", # 15
-    
-    "mean-tasmean",
-    
-    "total-precip",
-    "ninety-wettest-days",
-    # "100yr-storm-precip",
-    # "100yr-storm-freq",
-    "days-gte-1mm-precip-lt-0C-tasmean",
-    "days-gte-b90perc-tasmax-lt-b10perc-precip", #20
-    
-    "mean-spei",
-    "prop-months-lte-neg0.8-spei",
-    "prop-months-lte-neg1.6-spei",
-    "days-gte-b95perc-fwi",
-    
-    # "prop-days-gte-b85perc-3dayrunmeantasmin"
-    
-    "prop-days-gte-b90perc-3dayrunmeantasmax",
-    "mean-cont-days-gte-b90perc-3dayrunmeantasmax",
-    "mean-tas-gte-b90perc-3dayrunmeantasmax"
-    
-    )[27] # choose derived variable(s) to assemble
+
+# CHOOSE VARIABLE(S) TO PROCESS
+var_index <- c(7,10,13)
+
+# 1 - days-above-32C
+# 2 - days-above-35C
+# 3 - days-above-38C
+# 4 - ten-hottest-days
+# 5 - average-daytime-temperature
+# 6 - freezing-days
+# 7 - likelihood-daytime-heatwave
+# 8 - nights-above-20C
+# 9 - nights-above-25C
+# 10 - ten-hottest-nights
+# 11 - average-nighttime-temperature
+# 12 - frost-nights                       
+# 13 - likelihood-nighttime-heatwave
+# 14 - days-above-26C-wetbulb
+# 15 - days-above-28C-wetbulb
+# 16 - days-above-30C-wetbulb
+# 17 - days-above-32C-wetbulb
+# 18 - ten-hottest-wetbulb-days
+# 19 - average-temperature
+# 20 - change-total-annual-precipitation  
+# 21 - change-90-wettest-days
+# 22 - change-100yr-storm-precip
+# 23 - change-100yr-storm-freq
+# 24 - change-snowy-days                  
+# 25 - change-dry-hot-days
+# 26 - change-water-balance
+# 27 - likelihood-yearplus-drought
+# 28 - likelihood-yearplus-extreme-drought
+# 29 - change-wildfire-days               
 
 
 
@@ -54,18 +46,25 @@ library(units)
 options(future.fork.enable = T)
 plan(multicore)
 
-source("scripts/functions.R")
+source("scripts/setup.R") # load main directory routes 
+source("scripts/functions.R") # load functions
 
-dir_derived <- "/mnt/bucket_mine/results/global_heat_pf/01_derived"
-dir_ensembled <- "/mnt/bucket_mine/results/global_heat_pf/02_ensembled"
+# directory where derived files are stored
+dir_derived <- str_glue("{dir_results}/01_derived")
+
+# directory where resulting ensembles will be stored
+dir_ensembled <- str_glue("{dir_results}/02_ensembled")
+
 
 doms <- c("SEA", "AUS", "CAS", "WAS", "EAS", "AFR", "EUR", "NAM", "CAM", "SAM")
 
 wls <- c("0.5", "1.0", "1.5", "2.0", "2.5", "3.0")
 
+
+
 # load thresholds table
 thresholds <- 
-  str_glue("/mnt/bucket_mine/misc_data/CMIP5_model_temp_thresholds.csv") %>% 
+  str_glue("cmip5_model_temp_thresholds.csv") %>% 
   read_delim() %>%
   suppressMessages() %>% 
   select(1:6) %>% 
@@ -74,7 +73,7 @@ thresholds <-
   mutate(wl = str_sub(wl, 3)) %>% 
   mutate(wl = ifelse(str_length(wl) == 1, str_glue("{wl}.0"), wl))  %>%
   
-  # add institutes
+  # add institutes to model names (for joins to work)
   mutate(Model = case_when(str_detect(Model, "HadGEM") ~ str_glue("MOHC-{Model}"),
                            str_detect(Model, "MPI") ~ str_glue("MPI-M-{Model}"),
                            str_detect(Model, "NorESM") ~ str_glue("NCC-{Model}"),
@@ -82,41 +81,16 @@ thresholds <-
                            str_detect(Model, "MIROC") ~ str_glue("MIROC-{Model}"),
                            TRUE ~ Model))
 
-# load table of variables
-tb_vars <-
-  read_csv("/mnt/bucket_mine/pf_variable_table.csv") %>% 
+
+# load table of all variables
+tb_vars_all <-
+  read_csv("pf_variable_table.csv") %>% 
   suppressMessages()
 
+# subset those that will be processed
+tb_vars <- 
+  tb_vars_all[var_index, ]
 
-# ***************** HEAT WAVES ADDITION!
-
-# tb_vars %>% 
-#   rbind(c("minimum_temperature",
-#           "prop-days-gte-b85perc-3dayrunmeantasmin",
-#           "nothing",
-#           "likelihood-heat-wave",
-#           "n"
-#   )) -> tb_vars
-
-tb_vars %>% 
-  rbind(c("maximum_temperature",
-          "prop-days-gte-b90perc-3dayrunmeantasmax",
-          "nothing",
-          "likelihood-heat-wave",
-          "n")) %>% 
-  rbind(c("maximum_temperature",
-          "mean-cont-days-gte-b90perc-3dayrunmeantasmax",
-          "nothing",
-          "duration-heat-wave",
-          "n")) %>% 
-  rbind(c("maximum_temperature",
-          "mean-tas-gte-b90perc-3dayrunmeantasmax",
-          "convert-C",
-          "intensity-heat-wave",
-          "n")) -> tb_vars
-
-
-# *****************
 
 
 
@@ -131,7 +105,7 @@ for(dom in doms){
   
   # VARIABLE LOOP -------------------------------------------------------------
   
-  for(derived_var in derived_vars){
+  for(derived_var in tb_vars$var_derived){
     
     print(str_glue(" "))
     print(str_glue("Processing {derived_var}"))
@@ -152,9 +126,7 @@ for(dom in doms){
       dir_derived %>% 
       list.files() %>% 
       str_subset(dom) %>% 
-      str_subset(derived_var) %>% 
-      
-      str_subset("v2")                                                          # ***************************************
+      str_subset(derived_var)
     
     
     # import files into a list
@@ -224,19 +196,7 @@ for(dom in doms){
                               as.character() %>%
                               str_sub(end = 4) %>% 
                               as.integer()) %>%
-          #   drop_units()
           
-          # s %>%
-          #   st_set_dimensions("time",
-          #                     values = st_get_dimension_values(s, "time") %>%
-          #                       # ymd() %>%
-          #                       year()
-          #                     ) %>%
-          
-          # s %>%
-          #   st_set_dimensions("time",
-        #                     values = seq(1970, length.out = dim(s)[3])
-        #   ) %>%
         mutate(v = set_units(v, NULL))
       })
     
@@ -267,8 +227,7 @@ for(dom in doms){
     })
     
     
-    ## 
-    
+    # If model rasters have different dimensions, warp to the smallest 
     size_rasters <- l_s %>% map(dim) %>% map_int(~.x[1]*.x[2])
     
     if(size_rasters %>% unique() %>% length() %>% {. > 1}){
@@ -317,9 +276,9 @@ for(dom in doms){
           
           # mask
           if(rcm_ == "REMO2015"){
-            d <- str_glue("/mnt/bucket_cmip5/RCM_regridded_data/REMO2015/{dom}/monthly/spei/")
+            d <- str_glue("{dir_cordex}/REMO2015/{dom}/monthly/spei/")
           } else {
-            d <- str_glue("/mnt/bucket_cmip5/RCM_regridded_data/CORDEX_22/{dom}/monthly/spei/")
+            d <- str_glue("{dir_cordex}/CORDEX_22/{dom}/monthly/spei/")
           }
           
           
@@ -409,7 +368,7 @@ for(dom in doms){
           
         }) %>% 
           
-          # concatenate all models and form a single time dimension
+          # concatenate all models along time (3rd) dimension
           {do.call(c, c(., along = "time"))}
         
       })
@@ -417,7 +376,7 @@ for(dom in doms){
     
     ## CALCULATE STATISTICS ---------------------------------------------------
     
-    # Statistics are calculated per grid cell (across time dimension). They
+    # Statistics are calculated per grid cell (across 3rd dimension dimension). They
     # include the mean, the median, and the 5th and 95th percentile.
     
     l_s_wl_stats <-
@@ -433,9 +392,7 @@ for(dom in doms){
           st_apply(c(1,2), function(ts){
             
             # if a given grid cell is empty, propagate NAs
-            # if(any(is.na(ts))){
-            ### fix for heatwave intensity: 
-            if(all(is.na(ts))){
+            if(any(is.na(ts))){
               
               c(mean = NA,
                 perc05 = NA, 
@@ -444,14 +401,10 @@ for(dom in doms){
               
             } else {
               
-              # c(mean = mean(ts),
-              #   quantile(ts, c(0.05, 0.5, 0.95)) %>% 
-              #     setNames(c("perc05", "perc50", "perc95")))
-              
-              c(mean = mean(ts, na.rm = T),
-                quantile(ts, c(0.05, 0.5, 0.95), na.rm = T) %>% 
+              c(mean = mean(ts),
+                quantile(ts, c(0.05, 0.5, 0.95)) %>%
                   setNames(c("perc05", "perc50", "perc95")))
-              
+
             }
             
           },
@@ -476,7 +429,7 @@ for(dom in doms){
     
     print(str_glue("Saving result"))
     
-    res_filename <- 
+    res_filename <-
       str_glue(
         "{dir_ensembled}/{dom}_{derived_var}_ensemble.nc"
       )
