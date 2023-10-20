@@ -138,7 +138,7 @@ fn_derived <- function(derived_var){
           dim() %>%
           .[3]
         
-        # sort across time >> slice last 90 days >> calculate the mean
+        # sort across time >> slice last 90 days
         str_glue("cdo -seltimestep,{time_length-89}/{time_length} -timsort {dir_raw_data}/{f} {dir_cat}/mean_sel_{f}") %>%
           system(ignore.stdout = T, ignore.stderr = T)
         
@@ -173,7 +173,7 @@ fn_derived <- function(derived_var){
     # This can be change with the CDO option --timestat_date <first|middle|last>.
     
 
-    # obain prop of days above threshold
+    # obtain prop of days above threshold
     "cdo yearmean -gec,0 -sub {dir_cat}/run_mean.nc {dir_cat}/threshold.nc {outfile}" %>%
       str_glue() %>%
       system(ignore.stdout = T, ignore.stderr = T)
@@ -308,7 +308,7 @@ fn_derived <- function(derived_var){
           dim() %>%
           .[3]
         
-        # sort across time >> slice last 90 days >> calculate the mean
+        # sort across time >> slice last 90 days
         str_glue("cdo -seltimestep,{time_length-89}/{time_length} -timsort {dir_raw_data}/{f} {dir_cat}/mean_sel_{f}") %>%
           system(ignore.stdout = T, ignore.stderr = T)
         
@@ -343,7 +343,7 @@ fn_derived <- function(derived_var){
     # This can be change with the CDO option --timestat_date <first|middle|last>.
     
     
-    # obain prop of days above threshold
+    # obtain prop of days above threshold
     "cdo yearmean -gec,0 -sub {dir_cat}/run_mean.nc {dir_cat}/threshold.nc {outfile}" %>%
       str_glue() %>%
       system(ignore.stdout = T, ignore.stderr = T)

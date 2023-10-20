@@ -1,20 +1,37 @@
 
-var_input <- 
-  
-  c(# heat module
-    "maximum_temperature",
-    "minimum_temperature",
-    "maximum_wetbulb_temperature",
-    "average_temperature",
-    
-    # water module
-    "precipitation",
-    "precipitation+average_temperature",
-    "precipitation+maximum_temperature",
-    
-    # land module
-    "spei",
-    "fwi")[8] # choose input variable to process
+# CHOOSE VARIABLE(S) TO PROCESS
+var_index <- c(7,10,13)
+
+# 1 - days-above-32C
+# 2 - days-above-35C
+# 3 - days-above-38C
+# 4 - ten-hottest-days
+# 5 - average-daytime-temperature
+# 6 - freezing-days
+# 7 - likelihood-daytime-heatwave
+# 8 - nights-above-20C
+# 9 - nights-above-25C
+# 10 - ten-hottest-nights
+# 11 - average-nighttime-temperature
+# 12 - frost-nights                       
+# 13 - likelihood-nighttime-heatwave
+# 14 - days-above-26C-wetbulb
+# 15 - days-above-28C-wetbulb
+# 16 - days-above-30C-wetbulb
+# 17 - days-above-32C-wetbulb
+# 18 - ten-hottest-wetbulb-days
+# 19 - average-temperature
+# 20 - change-total-annual-precipitation  
+# 21 - change-90-wettest-days
+# 22 - change-100yr-storm-precip
+# 23 - change-100yr-storm-freq
+# 24 - change-snowy-days                  
+# 25 - change-dry-hot-days
+# 26 - change-water-balance
+# 27 - likelihood-yearplus-drought
+# 28 - likelihood-yearplus-extreme-drought
+# 29 - change-wildfire-days               
+
 
 
 # SETUP -----------------------------------------------------------------------
@@ -26,33 +43,34 @@ library(furrr)
 library(units)
 
 options(future.fork.enable = T)
+plan(multicore)
 
-source("scripts/functions.R")
+source("scripts/setup.R") # load main directory routes 
+source("scripts/functions.R") # load functions
 
-dir_ensembled <- "/mnt/bucket_mine/results/global_heat_pf/02_ensembled"
-dir_mosaicked <- "/mnt/bucket_mine/results/global_heat_pf/03_mosaicked/"
+# directory where ensembles are stored
+dir_ensembled <- str_glue("{dir_results}/02_ensembled")
 
-wl <- c("0.5", "1.0", "1.5", "2.0", "2.5", "3.0")
+# directory where resulting mosaics with be stored
+dir_mosaicked <- str_glue("{dir_results}/03_mosaicked")
 
-# domain centroids
-tb_dom <- 
-  tibble(
-    dom = c("NAM", "CAM", "SAM", "EUR", "AFR", "WAS", "CAS", "SEA", "EAS", "AUS"),
-    centr_lon = c(263.0-360, 287.29-360, 299.70-360, 9.75, 17.60, 67.18, 74.64, 118.04, 116.57, 147.63),
-    centr_lat = c(47.28, 10.20, -21.11, 49.68, -1.32, 16.93, 47.82, 6.5, 34.40, -24.26)
-  )
 
-# load table of variables
-tb_vars <-
-  read_csv("/mnt/bucket_mine/pf_variable_table.csv") %>% 
+doms <- c("SEA", "CAS", "WAS", "EAS", "AFR", "EUR", "NAM", "CAM", "SAM", "AUS")
+
+wls <- c("0.5", "1.0", "1.5", "2.0", "2.5", "3.0")
+
+
+# load table of all variables
+tb_vars_all <-
+  read_csv("pf_variable_table.csv") %>% 
   suppressMessages()
 
+# subset those that will be processed
+tb_vars <- 
+  tb_vars_all[var_index, ]
 
-# subset vars based on input var
-tb <- 
-  tb_vars %>% 
-  filter(var_input == {{var_input}})
 
+derived_vars <- tb_vars$var_derived
 
 
 
@@ -60,19 +78,27 @@ tb <-
 # setup grid and weights
 
 
+# spei and fwi have gaps (tiles not processed; ocean)
+if(any(str_detect(derived_vars, "spei|fwi"))){
+  template_var <- "total-precip"
+} else {
+  template_var <- derived_vars[1]
+}
+
+
+
 # TEMPLATE DOMAIN MAPS
 
 l_s_valid <-
   
-  map(set_names(tb_dom$dom), function(dom){
+  map(set_names(doms), function(dom){
     
     # load map
     s <- 
       dir_ensembled %>%
       list.files(full.names = T) %>%
       str_subset(dom) %>%
-      str_subset(tb$var_derived[1]) %>% # any var works
-      # str_subset("total-precip") %>% 
+      str_subset(template_var) %>%
       read_ncdf(ncsub = cbind(start = c(1, 1, 1), 
                               count = c(NA,NA,1))) %>% # only 1 timestep
       suppressMessages() %>% 
@@ -94,7 +120,7 @@ l_s_valid <-
       
       s2 <- 
         s %>% 
-        filter(lon > 180)
+        filter(lon >= 180)
       
       s2 <- 
         st_set_dimensions(s2, 
@@ -104,32 +130,32 @@ l_s_valid <-
                                                            center = F)-360) %>% 
         st_set_crs(4326)
       
-      s <- 
-        list(s1, s2) %>% 
-        map(as, "SpatRaster") %>% 
-        do.call(terra::merge, .) %>% #plot()
-        st_as_stars(proxy = F)
-      
-      s <- 
-        s %>%
-        st_set_dimensions(c(1,2), names = c("lon", "lat"))
-      
-      rm(s1, s2)
+      # keep AUS split
+      s <- list(AUS1 = s1, 
+                AUS2 = s2)
       
     }
     
     return(s)
     
-  }) %>% 
-  
+  })
+
+# append AUS parts separately
+l_s_valid <- 
+  append(l_s_valid[1:9], l_s_valid[[10]])
+
+# assign 1 to non NA grid cells
+l_s_valid <- 
+  l_s_valid %>% 
   map(function(s){
     
-    s %>% 
-      setNames("v") %>% 
+    s %>%
+      setNames("v") %>%
       mutate(v = ifelse(is.na(v), NA, 1))
     
   })
 
+doms_2aus <- c(doms[1:9], "AUS1", "AUS2")
 
 
 
@@ -153,118 +179,54 @@ global <-
 # INVERSE DISTANCES
 
 l_s_dist <-
-
-  pmap(tb_dom, function(dom, centr_lon, centr_lat){
-
-    s_valid <-
-      l_s_valid %>%
-      pluck(dom)
-
-    pt_valid <-
-      s_valid %>%
-      st_as_sf(as_points = T)
-
-    centr <-
-      st_point(c(centr_lon, centr_lat)) %>%
-      st_sfc() %>%
-      st_set_crs(4326)
-
-    s_dist <-
-      pt_valid %>%
-      mutate(dist = st_distance(., centr),
-             dist = set_units(dist, NULL),
-             dist = max(dist)-dist,
-             # dist = 1/dist,
-             dist = scales::rescale(dist),
-             # dist = dist^2
-             dist = dist^(1/2)
-      ) %>%
-      select(dist) %>%
-      st_rasterize(s_valid) %>%
+  
+  future_map(doms_2aus, function(dom){
+    
+    if(dom != "AUS2"){
+      
+      s_valid <-
+        l_s_valid %>%
+        pluck(dom)
+      
+      pt_valid <-
+        s_valid %>%
+        st_as_sf(as_points = T)
+      
+      domain_bound <- 
+        s_valid %>% 
+        st_as_sf(as.points = F, merge = T) %>%
+        st_cast("LINESTRING") %>% 
+        suppressWarnings()
+      
+      s_dist <-
+        pt_valid %>%
+        mutate(dist = st_distance(., domain_bound),
+               dist = set_units(dist, NULL),
+               dist = scales::rescale(dist, to = c(1e-10, 1))
+        ) %>%
+        select(dist) %>%
+        st_rasterize(s_valid)
+      
+    } else {
+      
+      s_dist <- 
+        l_s_valid %>%
+        pluck(dom) %>% 
+        setNames("dist")
+      
+    }
+    
+    s_dist %>% 
       st_warp(global)
-
-    return(s_dist)
-
+    
   }) %>%
-  set_names(tb_dom$dom)
-
-# l_s_dist <-
-#   
-#   pmap(tb_dom, function(dom, centr_lon, centr_lat){
-#     
-#     s_valid <-
-#       l_s_valid %>%
-#       pluck(dom)
-#     
-#     pt_valid <-
-#       s_valid %>%
-#       st_as_sf(as_points = T)
-#     
-#     centr <-
-#       st_point(c(centr_lon, centr_lat)) %>%
-#       st_sfc() %>%
-#       st_set_crs(4326)
-#     
-#     s_dist <-
-#       pt_valid %>%
-#       mutate(dist = st_distance(., centr),
-#              dist = set_units(dist, NULL),
-#              dist = max(dist)-dist) %>% 
-#       select(dist) %>% 
-#       st_rasterize(s_valid)
-#     
-#     if(dom != "AUS"){
-#       
-#       min_dim <- which.min(dim(s_dist))
-#       
-#       if(min_dim == 2){
-#         
-#         min_dist <- 
-#           s_dist %>% 
-#           slice(x, round(dim(s_dist)[1]/2)) %>% 
-#           pull() %>% 
-#           min(na.rm = T)
-#         
-#       } else {
-#         
-#         min_dist <- 
-#           s_dist %>% 
-#           slice(x, round(dim(s_dist)[2]/2)) %>% 
-#           pull() %>% 
-#           min(na.rm = T)
-#         
-#       }
-#       
-#       s_dist <- 
-#         s_dist %>% 
-#         mutate(dist = ifelse(dist < min_dist, min_dist, dist),
-#                dist = scales::rescale(dist),
-#                dist = dist^2) %>% 
-#         st_warp(global)
-#       
-#       
-#       
-#     } else {
-#       
-#       s_dist <- 
-#         s_dist %>% 
-#         mutate(dist = scales::rescale(dist),
-#                dist = dist^2) %>% 
-#         st_warp(global)
-#       
-#     }
-#     
-#     
-#     return(s_dist)
-#     
-#   }) %>%
-#   set_names(tb_dom$dom)
+  set_names(doms_2aus)
 
 
 
 
 # SUMMED DISTANCES 
-# only in overlapping areas
+# denominator; only in overlapping areas
 
 s_intersections <- 
   
@@ -296,13 +258,9 @@ l_s_weights <-
     
     c(s, s_intersections) %>% 
       
-      mutate(sum_intersect = ifelse(sum_intersect == 0, 1e-10, sum_intersect)) %>% 
-      
       # 1 if no intersection; domain's distance / summed distance otherwise
       mutate(weights = ifelse(is.na(sum_intersect) & !is.na(dist), 1, dist/sum_intersect)) %>%
-      select(weights) #%>% 
-      
-      # st_warp(global)
+      select(weights)
     
   })
 
@@ -311,69 +269,59 @@ l_s_weights <-
 
 # LAND MASK
 
-# rast_reference_0.05 <- 
-#   st_as_stars(st_bbox(global), dx = 0.05, dy = 0.05, values = -9999) 
-# 
-# land <- 
-#   "/mnt/bucket_mine/misc_data/ne_50m_land/ne_50m_land.shp" %>% 
-#   st_read() %>% 
-#   mutate(a = 1) %>%
-#   select(a) %>% 
-#   st_rasterize(rast_reference_0.05)
-# 
-# land <- 
-#   land %>%
-#   st_warp(global, use_gdal = T, method = "max") %>%
-#   suppressWarnings() %>% 
-#   setNames("a") %>%
-#   mutate(a = ifelse(a == -9999, NA, 1))
-# 
-# land %>% 
-#   as("SpatRaster") %>% 
-#   terra::buffer(1000) -> foo
-
 land <- 
-  "/mnt/bucket_cmip5/Probable_futures/irunde_scripts/create_a_dataset/04_rcm_buffered_ocean_mask.nc" %>% 
+  # "/mnt/bucket_cmip5/Probable_futures/irunde_scripts/create_a_dataset/04_rcm_buffered_ocean_mask.nc" %>% 
+  "buffered_ocean_mask.nc" %>% 
   read_ncdf() %>%
   st_warp(global) %>% 
   setNames("a")
 
 
-# DESERT MAKS
-if(var_input %in% c("spei", "fwi")){
+# BARREN MASK
+
+if(any(str_detect(derived_vars, "spei|fwi"))){
   
-  precip <- 
-    read_stars("/mnt/bucket_mine/results/global_heat_pf/global_mean-annual-precip_wl0p5.tif")
-  
-  desert <- 
-    precip %>%
-    split("band") %>% 
-    mutate(v = ifelse(mean <= 90, NA, 1)) %>% 
-    select(v)
-  
+  barren <- 
+    # "/mnt/bucket_cmip5/Probable_futures/land_module/maps/mask_layers/modis_barren_mask_ge90perc_regridto22kmwmean.tif" %>%
+    "modis_barren_mask_ge90perc_regridto22kmwmean.tif" %>% 
+    read_stars() %>% 
+    st_warp(global) %>% 
+    setNames("barren")
 }
 
 
 
-# MOSAIC
+# MOSAIC ----------------------------------------------------------------------
 
 # loop through variables
 
-
-pwalk(tb[2,], function(var_derived, final_name, ...){
+walk(derived_vars, function(derived_var){
   
   print(str_glue(" "))
-  # print(str_glue("Mosaicking {derived_vars_}"))
+  print(str_glue("Mosaicking {derived_var}"))
+  
+  final_name <- 
+    tb_vars %>% 
+    filter(var_derived == derived_var) %>% 
+    pull(var_final)
+  
+  vol <- 
+    tb_vars %>% 
+    filter(var_derived == derived_var) %>% 
+    pull(volume)
+  
   
   l_s <- 
-    map(tb_dom$dom %>% set_names(), function(dom){
+    map(doms %>% set_names(), function(dom){
+      
+      print(dom)
       
       # load ensembled map 
       s <- 
         dir_ensembled %>%
         list.files(full.names = T) %>%
         str_subset(dom) %>%
-        str_subset(str_glue("{var_derived}_ensemble")) %>%
+        str_subset(str_glue("{derived_var}_ensemble")) %>%
         read_ncdf %>%
         suppressMessages()
       
@@ -392,7 +340,7 @@ pwalk(tb[2,], function(var_derived, final_name, ...){
         
         s2 <- 
           s %>% 
-          filter(lon > 180)
+          filter(lon >= 180)
         
         s2 <- 
           st_set_dimensions(s2, 
@@ -402,74 +350,43 @@ pwalk(tb[2,], function(var_derived, final_name, ...){
                                                              center = F)-360) %>% 
           st_set_crs(4326)
         
-        s <- 
-          map(names(s), function(v){
-            
-            list(
-              s1 %>% select(v),
-              s2 %>% select(v)
-            ) %>% 
-              map(as, "SpatRaster") %>% 
-              do.call(terra::merge, .) %>%
-              st_as_stars(proxy = F) %>% 
-              setNames(v) %>% 
-              st_set_dimensions(c(1,2,3), names = c("lon", "lat", "warming_levels")) %>% 
-              st_set_dimensions(3, values = st_get_dimension_values(s, "warming_levels"))
-            
-          }) %>% 
-          do.call(c, .)
+        s <- list(AUS1 = s1, 
+                  AUS2 = s2)
         
       }
-      
-      
-      # s_valid <- 
-      #   l_s_valid %>% 
-      #   pluck(dom)
-      # 
-      # s <- 
-      #   s %>% 
-      #   st_warp(s_valid)
-      # 
-      # s[is.na(s_valid)] <- NA
       
       return(s)
     })
   
-  
-  if(str_detect(final_name, "freq")){
-    wl <- wl[-1]
-  }
+  l_s <- append(l_s[1:9], l_s[[10]])
   
   
   
   l_mos_wl <- 
     
     # loop through warming levels
-    imap(wl, function(wl_, wl_pos){
+    imap(wls, function(wl, wl_pos){
       
-      print(str_glue("    {wl_}"))
+      print(str_glue("    {wl}"))
       
+      
+      l_s_wl <-
+        l_s %>% 
+        map(slice, wl, wl_pos) %>% 
+        map(st_warp, global)
+      
+      # APPLY WEIGHTS
       l_s_weighted <- 
         
-        map(tb_dom$dom %>% set_names(), function(dom){
-          
-          s <- 
-            l_s %>% 
-            pluck(dom)
-          
-          r <- 
-            s %>% 
-            st_warp(global) %>%
-            slice(warming_levels, wl_pos) # only 1 layer
+        map2(l_s_wl, l_s_weights, function(s, w){
           
           orig_names <- names(s)
           
           map(orig_names, function(v_){
             
-            c(r %>% select(v_) %>% setNames("v"),
-              l_s_weights %>% pluck(dom)) %>% 
+            c(s %>% select(all_of(v_)) %>% setNames("v"),
+              w) %>% 
               
-              # apply weights
               mutate(v = v*weights) %>% 
               select(-weights) %>% 
               setNames(v_)
@@ -479,6 +396,7 @@ pwalk(tb[2,], function(var_derived, final_name, ...){
           
         })
       
+      # MOSAIC
       mos <- 
         l_s_weighted %>%
         map(merge, name = "stats") %>%
@@ -497,176 +415,199 @@ pwalk(tb[2,], function(var_derived, final_name, ...){
           
         },
         FUTURE = F) %>% 
-        setNames(wl_)
+        setNames(wl)
       
       return(mos)
       
     })
   
   
-  
   if(str_detect(final_name, "change")){
-    
+
     print(str_glue("Calculating differences"))
-    
-    
-    if(str_detect(final_name, "freq")){
-      
-      l_mos_wl <- 
-        l_mos_wl %>% 
-        map(function(s){
-          
-          (1-s) / 0.01
-          
-        })
-      
-    } else {
-      
+
+  #   
+  #   if(str_detect(final_name, "freq")){
+  #     
+  #     l_mos_wl <- 
+  #       l_mos_wl %>% 
+  #       map(function(s){
+  #         
+  #         (1-s) / 0.01
+  #         
+  #       })
+  #     
+  #   } else {
+  #     
       l_mos_wl <-
         l_mos_wl[2:6] %>%
         map(function(s){
-          
+
           s - l_mos_wl[[1]]
-          
+
         }) %>%
         {append(list(l_mos_wl[[1]]), .)}
-      
-    }
+  #     
+  #   }
   }
   
+  
+  # round
+  l_mos_wl <-
+    l_mos_wl %>%
+    map(function(s){
+
+      wl <- names(s)
+      
+      if(final_name == "change-water-balance"){
+        
+        s %>%
+          rename(a = 1) %>%
+          mutate(a = round(a, 1)) %>%
+          setNames(wl)
+        
+      # } else if(final_name == "intensity-heat-wave") {                            # ************** intensity !!!!
+      #   
+      #   s %>%     
+      #     rename(a = 1) %>%
+      #     mutate(a = round(a, 2)) %>%
+      #     setNames(wl)
+        
+      } else if(str_detect(final_name, "drought") | str_detect(final_name, "heatwave")){
+        
+        s %>%
+          rename(a = 1) %>%
+          mutate(a = a * 100,
+                 a = as.integer(round(a))) %>%
+          setNames(wl)
+        
+      } else {
+        
+        s %>%
+          rename(a = 1) %>%
+          mutate(a = as.integer(round(a))) %>%
+          setNames(wl)
+        
+      }
+
+    })
   
   s <- 
     l_mos_wl %>% 
     do.call(c, .) %>% 
-    merge(name = "warming_level") %>% 
-    split("stats")
+    merge(name = "wl") %>% 
+    split("stats") %>% 
+    st_set_dimensions(3, values = as.numeric(wls))
   
   
-  if(var_input %in% c("spei", "fwi")){
-    
+  if(str_detect(derived_var, "spei|fwi")){
+
     print(str_glue("Removing deserts"))
-    
-    s[is.na(desert)] <- NA
-    
+
+    s[barren == 1] <- -88888
+
   }
   
+  s[is.na(land)] <- NA_integer_
   
-  s <- 
-    s %>% 
-    round(1)
   
-  s[is.na(land)] <- NA
+  if(str_detect(final_name, "drought")){
+    print("removing metrics") # **********
+    s <- 
+      s %>% 
+      select(mean, perc50)
+    
+  }
   
   
   # save as nc
   print(str_glue("  Saving"))
   
-  file_name <- str_glue("{dir_mosaicked}/{final_name}_v01.nc")
-  fn_save_nc(file_name, s)
-  
+  file_name <- str_glue("{dir_mosaicked}/{vol}/v3/{final_name}_v03.nc") # *******************
+  fn_write_nc(s, file_name, "wl")
   
 })
 
 
 
 
+"/mnt/bucket_mine/results/global_heat_pf/03_mosaicked/heat/v3/ten-hottest-days_v03.nc" %>% read_ncdf() -> a
 
-# 
-# 
-# 
-# 
-# 
-# 
-# 
-# a <- seq(1,0, by = -0.05)[6]
-# b <- seq(1,0, by = -0.05)[2]
-# 
-# d <- sum(c(a,b)^2)
-# 
-# a^2/d
-# b^2/d
-# 
-# (a^2/d) + (b^2/d)
-# 
-# 
-# 
-# a <- (seq(1,0, by = -0.05)^2)[6]
-# b <- (seq(1,0, by = -0.05)^2)[2]
-# 
-# d <- sum(a,b)
-# 
-# (a/d) + (b/d)
-# 
-# 
-# 
-# wl <- 1
-# v <- "mean"
-# 
-# s %>% 
-#   select(v) %>% 
-#   slice(warming_level, wl) %>% 
-#   as_tibble() %>% 
-#   rename("v" = 3) %>% 
-#   ggplot(aes(x,y,fill = v)) +
-#   geom_raster() +
-#   colorspace::scale_fill_continuous_sequential("Plasma", na.value = "transparent", rev = F) +
-#   coord_equal() +
-#   theme(axis.title = element_blank())
-# 
-# # NAM
-# s %>% 
-#   select(v) %>% 
-#   slice(warming_level, wl) %>% 
-#   as_tibble() %>% 
-#   rename("v" = 3) %>% 
-#   ggplot(aes(x,y,fill = v)) +
-#   geom_raster() +
-#   colorspace::scale_fill_continuous_sequential("Plasma", na.value = "transparent", rev = F) +
-#   coord_equal(xlim = c(-130, -70), ylim = c(10,55)) +
-#   theme(axis.title = element_blank())
-# 
-# # SAM
-# s %>% 
-#   select(v) %>% 
-#   slice(warming_level, wl) %>%   
-#   as_tibble() %>% 
-#   rename("v" = 3) %>% 
-#   ggplot(aes(x,y,fill = v)) +
-#   geom_raster() +
-#   colorspace::scale_fill_continuous_sequential("Plasma", na.value = "transparent", rev = F) +
-#   coord_equal(xlim = c(-100, -30), ylim = c(-30,25)) +
-#   theme(axis.title = element_blank())
-# 
-# # AFR
-# s %>% 
-#   select(v) %>% 
-#   slice(warming_level, wl) %>% 
-#   as_tibble() %>% 
-#   rename("v" = 3) %>% 
-#   ggplot(aes(x,y,fill = v)) +
-#   geom_raster() +
-#   colorspace::scale_fill_continuous_sequential("Plasma", na.value = "transparent", rev = F) +
-#   coord_equal(xlim = c(-20, 55), ylim = c(0,50)) +
-#   theme(axis.title = element_blank())
-# 
-# # CAS
-# mos %>% 
-#   slice(stats, 1) %>% 
-#   as_tibble() %>% 
-#   rename("v" = 3) %>% 
-#   ggplot(aes(x,y,fill = v)) +
-#   geom_raster() +
-#   colorspace::scale_fill_continuous_sequential("Plasma", na.value = "transparent", rev = F) +
-#   coord_equal(xlim = c(25, 85), ylim = c(15,70)) +
-#   theme(axis.title = element_blank())
-# 
-# # AUS
-# mos %>% 
-#   slice(stats, 1) %>% 
-#   as_tibble() %>% 
-#   rename("v" = 3) %>% 
-#   ggplot(aes(x,y,fill = v)) +
-#   geom_raster() +
-#   colorspace::scale_fill_continuous_sequential("Plasma", na.value = "transparent", rev = F) +
-#   coord_equal(xlim = c(90, 170), ylim = c(-50,10)) +
-#   theme(axis.title = element_blank())
+
+aa <- 
+  map(1:6, function(i){
+  
+  a %>% 
+    select(1) %>% 
+    slice(wl, i)
+  
+})
+
+aa[2:6] %>% 
+  map(function(s){
+    
+    s - aa[[1]]
+    
+  }) %>% 
+  
+  map(function(s){
+    
+    s %>% pull() %>% {sum(. > 2, na.rm = T)}
+    
+  })
+  
+
+
+
+"/mnt/bucket_mine/results/global_heat_pf/03_mosaicked/heat/v3/ten-hottest-nights_v03_beta.nc" %>% read_ncdf() -> b
+
+bb <- 
+  map(1:6, function(i){
+    
+    b %>% 
+      select(1) %>% 
+      slice(wl, i)
+    
+  })
+
+bb[2:6] %>% 
+  map(function(s){
+    
+    s - bb[[1]]
+    
+  }) %>% 
+  
+  map(function(s){
+    
+    s %>% pull() %>% {sum(. > 2, na.rm = T)}
+    
+  })
+
+
+
+
+
+
+
+
+l_mos_wl <-
+  l_mos_wl[2:6] %>%
+  map(function(s){
+    
+    s - l_mos_wl[[1]]
+    
+  }) %>%
+  {append(list(l_mos_wl[[1]]), .)}
+
+do.call(c, c(l_mos_wl, along = "wl")) %>%
+  split("stats") %>% 
+  st_set_dimensions(3, values = as.numeric(wls)) -> s
+
+file_name <- str_glue("{dir_mosaicked}/heat/v3/ten-hottest-days-diff_v03.nc")
+fn_write_nc(s, file_name, "wl")
+
+
+
+
+
+"/mnt/bucket_mine/results/global_heat_pf/03_mosaicked/heat/v3/" %>% list.files(full.names = T) %>% str_subset("beta")
