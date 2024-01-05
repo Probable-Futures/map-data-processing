@@ -1,10 +1,11 @@
 
 # CHOOSE VARIABLE(S) TO PROCESS
-var_index <- c(7,10,13)
+var_index <- c(4)
 
 # 1 - days-above-32C
 # 2 - days-above-35C
 # 3 - days-above-38C
+# 4 - days-above-45C *****
 # 4 - ten-hottest-days
 # 5 - average-daytime-temperature
 # 6 - freezing-days
@@ -526,7 +527,41 @@ walk(derived_vars, function(derived_var){
   file_name <- str_glue("{dir_mosaicked}/{vol}/v3/{final_name}_v03.nc") # *******************
   fn_write_nc(s, file_name, "wl")
   
+  
 })
+
+
+
+# Sync to s3 bucket
+walk(derived_vars, function(derived_var){
+  
+  # final_name <- 
+  #   tb_vars %>% 
+  #   filter(var_derived == derived_var) %>% 
+  #   pull(var_final)
+  
+  vol <- 
+    tb_vars %>% 
+    filter(var_derived == derived_var) %>% 
+    pull(volume)
+  
+  dir_gs <- str_glue("{dir_results_gs}/03_mosaicked/{vol}/v3")
+  dir_s3 <- str_glue("s3://global-pf-data-engineering/climate-data/v3/{vol}/03_mosaicked")
+  
+  str_glue("gsutil rsync -r {dir_gs} {dir_s3}") %>% 
+    system()
+
+})
+
+
+
+
+
+
+
+
+
+
 
 
 

@@ -58,6 +58,20 @@ fn_derived <- function(derived_var){
     # *************
     
     
+  } else if (derived_var == "days-gte-45C-tasmax") {
+    
+    set_units(45, degC) %>%
+      set_units(K) %>%
+      drop_units() -> lim_k
+    
+    str_glue("cdo -yearsum -gec,{lim_k} {dir_cat}/{v}_cat.nc {outfile}") %>%
+      system(ignore.stdout = T, ignore.stderr = T)
+    
+    
+    
+    # *************
+    
+    
   } else if (derived_var == "ten-hottest-days-tasmax") {
     
     dir_temp <- str_glue("{dir_disk}/dir_temp")

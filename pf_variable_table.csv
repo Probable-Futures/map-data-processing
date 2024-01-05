@@ -2,6 +2,7 @@ var_final,var_derived,var_input,change_import,parallel,volume
 days-above-32C,days-gte-32C-tasmax,maximum_temperature,nothing,y,heat
 days-above-35C,days-gte-35C-tasmax,maximum_temperature,nothing,y,heat
 days-above-38C,days-gte-38C-tasmax,maximum_temperature,nothing,y,heat
+days-above-45C,days-gte-45C-tasmax,maximum_temperature,nothing,y,heat
 ten-hottest-days,ten-hottest-days-tasmax,maximum_temperature,fix-time+convert-C,n,heat
 average-daytime-temperature,mean-tasmax,maximum_temperature,convert-C,y,heat
 freezing-days,days-lt-0C-tasmax,maximum_temperature,nothing,y,heat
