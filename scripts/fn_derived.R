@@ -58,6 +58,20 @@ fn_derived <- function(derived_var){
     # *************
     
     
+  } else if (derived_var == "days-gte-45C-tasmax") {
+    
+    set_units(45, degC) %>%
+      set_units(K) %>%
+      drop_units() -> lim_k
+    
+    str_glue("cdo -yearsum -gec,{lim_k} {dir_cat}/{v}_cat.nc {outfile}") %>%
+      system(ignore.stdout = T, ignore.stderr = T)
+    
+    
+    
+    # *************
+    
+    
   } else if (derived_var == "ten-hottest-days-tasmax") {
     
     dir_temp <- str_glue("{dir_disk}/dir_temp")
@@ -172,7 +186,7 @@ fn_derived <- function(derived_var){
     # The time of outfile is determined by the time in the middle of all contributing timesteps of infile. 
     # This can be change with the CDO option --timestat_date <first|middle|last>.
     
-
+    
     # obtain prop of days above threshold
     "cdo yearmean -gec,0 -sub {dir_cat}/run_mean.nc {dir_cat}/threshold.nc {outfile}" %>%
       str_glue() %>%
@@ -182,8 +196,8 @@ fn_derived <- function(derived_var){
     file.remove(str_glue("{dir_cat}/ninety_hottest_days.nc"),
                 str_glue("{dir_cat}/run_mean.nc"),
                 str_glue("{dir_cat}/threshold.nc"))
-      
-      
+    
+    
     
     
     # HEAT VOLUME: TAS --------------------------------------------------------
@@ -446,7 +460,7 @@ fn_derived <- function(derived_var){
     
     
     # WATER VOLUME: PRECIP -----------------------------------------------------
-      
+    
     
   } else if(derived_var == "total-precip"){
     

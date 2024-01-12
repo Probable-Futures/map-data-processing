@@ -4,12 +4,14 @@ library(stars)
 
 
 
-dir_mosaicked <- "/mnt/bucket_mine/results/global_heat_pf/03_mosaicked/land/v3"
-dir_csv <- "/mnt/bucket_mine/results/global_heat_pf/csv/land"
+dir_mosaicked <- "/mnt/bucket_mine/results/global_heat_pf/03_mosaicked/heat/v3"
+dir_csv <- "/mnt/bucket_mine/results/global_heat_pf/csv/heat"
 
 
 dir_mosaicked %>% 
   list.files() %>% 
+  str_subset("ten-hottest") %>%  # *******************
+  str_subset("wetbulb", negate = T) %>% 
   walk(function(f){
     
     print(f)
@@ -37,3 +39,7 @@ dir_mosaicked %>%
     
     
   })
+
+
+# gsutil rsync -r gs://clim_data_reg_useast1/results/global_heat_pf/csv/heat s3://global-pf-data-engineering/climate-data/v3/heat/03_mosaicked_csv
+

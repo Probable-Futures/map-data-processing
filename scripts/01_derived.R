@@ -1,11 +1,12 @@
 
 
 # CHOOSE VARIABLE(S) TO PROCESS
-var_index <- c(7,10,13)
+var_index <- c(4)
 
 # 1 - days-above-32C
 # 2 - days-above-35C
 # 3 - days-above-38C
+# 4 - days-above-45C *****
 # 4 - ten-hottest-days
 # 5 - average-daytime-temperature
 # 6 - freezing-days

@@ -1,11 +1,12 @@
 
 
 # CHOOSE VARIABLE(S) TO PROCESS
-var_index <- c(7,10,13)
+var_index <- c(4)
 
 # 1 - days-above-32C
 # 2 - days-above-35C
 # 3 - days-above-38C
+# 4 - days-above-45C *****
 # 4 - ten-hottest-days
 # 5 - average-daytime-temperature
 # 6 - freezing-days
@@ -197,7 +198,7 @@ for(dom in doms){
                               str_sub(end = 4) %>% 
                               as.integer()) %>%
           
-        mutate(v = set_units(v, NULL))
+          mutate(v = set_units(v, NULL))
       })
     
     
@@ -347,7 +348,7 @@ for(dom in doms){
               filter(time >= 1971,
                      time <= 2000)
             
-          # other warming levels:
+            # other warming levels:
           } else {
             
             thres_val <-
@@ -404,7 +405,7 @@ for(dom in doms){
               c(mean = mean(ts),
                 quantile(ts, c(0.05, 0.5, 0.95)) %>%
                   setNames(c("perc05", "perc50", "perc95")))
-
+              
             }
             
           },

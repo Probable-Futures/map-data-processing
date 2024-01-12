@@ -1,10 +1,11 @@
 
 # CHOOSE VARIABLE(S) TO PROCESS
-var_index <- c(7,10,13)
+var_index <- c(4)
 
 # 1 - days-above-32C
 # 2 - days-above-35C
 # 3 - days-above-38C
+# 4 - days-above-45C *****
 # 4 - ten-hottest-days
 # 5 - average-daytime-temperature
 # 6 - freezing-days
@@ -423,32 +424,32 @@ walk(derived_vars, function(derived_var){
   
   
   if(str_detect(final_name, "change")){
-
+    
     print(str_glue("Calculating differences"))
-
-  #   
-  #   if(str_detect(final_name, "freq")){
-  #     
-  #     l_mos_wl <- 
-  #       l_mos_wl %>% 
-  #       map(function(s){
-  #         
-  #         (1-s) / 0.01
-  #         
-  #       })
-  #     
-  #   } else {
-  #     
-      l_mos_wl <-
-        l_mos_wl[2:6] %>%
-        map(function(s){
-
-          s - l_mos_wl[[1]]
-
-        }) %>%
-        {append(list(l_mos_wl[[1]]), .)}
-  #     
-  #   }
+    
+    #   
+    #   if(str_detect(final_name, "freq")){
+    #     
+    #     l_mos_wl <- 
+    #       l_mos_wl %>% 
+    #       map(function(s){
+    #         
+    #         (1-s) / 0.01
+    #         
+    #       })
+    #     
+    #   } else {
+    #     
+    l_mos_wl <-
+      l_mos_wl[2:6] %>%
+      map(function(s){
+        
+        s - l_mos_wl[[1]]
+        
+      }) %>%
+      {append(list(l_mos_wl[[1]]), .)}
+    #     
+    #   }
   }
   
   
@@ -456,7 +457,7 @@ walk(derived_vars, function(derived_var){
   l_mos_wl <-
     l_mos_wl %>%
     map(function(s){
-
+      
       wl <- names(s)
       
       if(final_name == "change-water-balance"){
@@ -466,12 +467,12 @@ walk(derived_vars, function(derived_var){
           mutate(a = round(a, 1)) %>%
           setNames(wl)
         
-      # } else if(final_name == "intensity-heat-wave") {                            # ************** intensity !!!!
-      #   
-      #   s %>%     
-      #     rename(a = 1) %>%
-      #     mutate(a = round(a, 2)) %>%
-      #     setNames(wl)
+        # } else if(final_name == "intensity-heat-wave") {                            # ************** intensity !!!!
+        #   
+        #   s %>%     
+        #     rename(a = 1) %>%
+        #     mutate(a = round(a, 2)) %>%
+        #     setNames(wl)
         
       } else if(str_detect(final_name, "drought") | str_detect(final_name, "heatwave")){
         
@@ -489,7 +490,7 @@ walk(derived_vars, function(derived_var){
           setNames(wl)
         
       }
-
+      
     })
   
   s <- 
@@ -501,11 +502,11 @@ walk(derived_vars, function(derived_var){
   
   
   if(str_detect(derived_var, "spei|fwi")){
-
+    
     print(str_glue("Removing deserts"))
-
+    
     s[barren == 1] <- -88888
-
+    
   }
   
   s[is.na(land)] <- NA_integer_
@@ -526,7 +527,41 @@ walk(derived_vars, function(derived_var){
   file_name <- str_glue("{dir_mosaicked}/{vol}/v3/{final_name}_v03.nc") # *******************
   fn_write_nc(s, file_name, "wl")
   
+  
 })
+
+
+
+# Sync to s3 bucket
+walk(derived_vars, function(derived_var){
+  
+  # final_name <- 
+  #   tb_vars %>% 
+  #   filter(var_derived == derived_var) %>% 
+  #   pull(var_final)
+  
+  vol <- 
+    tb_vars %>% 
+    filter(var_derived == derived_var) %>% 
+    pull(volume)
+  
+  dir_gs <- str_glue("{dir_results_gs}/03_mosaicked/{vol}/v3")
+  dir_s3 <- str_glue("s3://global-pf-data-engineering/climate-data/v3/{vol}/03_mosaicked")
+  
+  str_glue("gsutil rsync -r {dir_gs} {dir_s3}") %>% 
+    system()
+  
+})
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -536,12 +571,12 @@ walk(derived_vars, function(derived_var){
 
 aa <- 
   map(1:6, function(i){
-  
-  a %>% 
-    select(1) %>% 
-    slice(wl, i)
-  
-})
+    
+    a %>% 
+      select(1) %>% 
+      slice(wl, i)
+    
+  })
 
 aa[2:6] %>% 
   map(function(s){
@@ -555,7 +590,7 @@ aa[2:6] %>%
     s %>% pull() %>% {sum(. > 2, na.rm = T)}
     
   })
-  
+
 
 
 
