@@ -1,39 +1,8 @@
 
 
 # CHOOSE VARIABLE(S) TO PROCESS
+# see table "scripts/tb_vars_all.R" to get id 
 var_index <- c(4)
-
-# 1 - days-above-32C
-# 2 - days-above-35C
-# 3 - days-above-38C
-# 4 - days-above-45C *****
-# 4 - ten-hottest-days
-# 5 - average-daytime-temperature
-# 6 - freezing-days
-# 7 - likelihood-daytime-heatwave
-# 8 - nights-above-20C
-# 9 - nights-above-25C
-# 10 - ten-hottest-nights
-# 11 - average-nighttime-temperature
-# 12 - frost-nights                       
-# 13 - likelihood-nighttime-heatwave
-# 14 - days-above-26C-wetbulb
-# 15 - days-above-28C-wetbulb
-# 16 - days-above-30C-wetbulb
-# 17 - days-above-32C-wetbulb
-# 18 - ten-hottest-wetbulb-days
-# 19 - average-temperature
-# 20 - change-total-annual-precipitation  
-# 21 - change-90-wettest-days
-# 22 - change-100yr-storm-precip
-# 23 - change-100yr-storm-freq
-# 24 - change-snowy-days                  
-# 25 - change-dry-hot-days
-# 26 - change-water-balance
-# 27 - likelihood-yearplus-drought
-# 28 - likelihood-yearplus-extreme-drought
-# 29 - change-wildfire-days               
-
 
 
 
@@ -48,11 +17,9 @@ library(units)
 options(future.fork.enable = T)
 plan(multicore)
 
-# load main directory routes 
-source("scripts/setup.R")
 
-# load main function to calculate derived vars
-source("scripts/fn_derived.R") 
+source("scripts/setup.R") # load main directory routes 
+source("scripts/fn_derived.R") # load main function to calculate derived vars
 source("scripts/functions.R") # other functions
 
 
@@ -61,9 +28,7 @@ dir_derived <- str_glue("{dir_results}/01_derived")
 doms <- c("SEA", "AUS", "CAS", "WAS", "EAS", "AFR", "EUR", "NAM", "CAM", "SAM")
 
 # load table of all variables
-tb_vars_all <-
-  read_csv("pf_variable_table.csv") %>% 
-  suppressMessages()
+source("scripts/tb_vars_all.R")
 
 # subset those that will be processed
 tb_vars <- 
