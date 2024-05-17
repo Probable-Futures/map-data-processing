@@ -1,0 +1,722 @@
+---
+title: "Maximum maximum temperature"
+execute: 
+  echo: false
+  fig-width: 9
+  fig-height: 6
+format: 
+  revealjs:
+    self-contained: true
+editor: visual
+editor_options: 
+  chunk_output_type: console
+---
+
+
+
+```{r}
+#| label: setup
+#| include: false
+
+library(tidyverse)
+library(stars)
+
+
+fn_plot <- function(tb, wl, lim1, lim2, by, lab, nam, title, stat) {
+  
+  tb <- 
+    tb %>% 
+    filter(band == wl)
+  
+  # quants <- quantile(tb$v, c(0.95, 0.99, 1), na.rm = T) %>% round()
+    
+  tb %>%   
+    ggplot(aes(x,y,fill = v)) +
+    geom_raster() +
+    coord_equal(xlim = c(-1e7, 1.3e7),
+                ylim = c(-0.6e7, 0.8e7)) +
+    scale_fill_gradientn(colors = hcl.colors(10, palette = "viridis"),
+                         na.value = "transparent",
+                         # trans = "sqrt",
+                         limits = c(lim1,lim2),
+                         breaks = seq(lim1, lim2, by = by),
+                         labels = lab,
+                         oob = scales::squish,
+                         name = nam,
+                         guide = guide_colorbar(barheight = 8, barwidth = 0.4)) +
+    theme(axis.title = element_blank(),
+          axis.ticks = element_blank(),
+          axis.text = element_blank()) +
+    labs(title = title,
+         subtitle = str_glue("[{stat}] of models' maximums | WL: [{wl}] deg"),
+         caption = str_glue("Top amounts:   95th perc: {quants[1]}  |  99th perc: {quants[2]}  |  Max: {quants[3]}")
+         )
+  
+}
+
+
+# *****
+
+
+fn_plot_dif <- function(tb, wl, lim1, lim2, by, lab, nam, title, stat) {
+  
+  tb <- 
+    tb %>% 
+    filter(band == wl)
+  
+  # quants <- quantile(tb$v, c(0.95, 0.99, 1), na.rm = T) %>% round()
+    
+  tb %>%   
+    ggplot(aes(x,y,fill = v)) +
+    geom_raster() +
+    coord_equal(xlim = c(-1e7, 1.3e7),
+                ylim = c(-0.6e7, 0.8e7)) +
+    colorspace::scale_fill_continuous_diverging(
+      "BlueRed3",
+      rev = F,
+      na.value = "transparent",
+      limits = c(lim1,lim2),
+      breaks = seq(lim1, lim2, by = by),
+      labels = lab,
+      oob = scales::squish,
+      name = nam,
+      guide = guide_colorbar(barheight = 8, barwidth = 0.4)) +
+    theme(axis.title = element_blank(),
+          axis.ticks = element_blank(),
+          axis.text = element_blank()) +
+    labs(title = title,
+         subtitle = str_glue("[{stat}] of models' maximums | WL: [{wl}] deg")#,
+         # caption = str_glue("Top amounts:   95th perc: {quants[1]}  |  99th perc: {quants[2]}  |  Max: {quants[3]}")
+         )
+  
+}
+
+
+# ******
+
+fn_plot_dom_mod <- function(tb) {
+  
+  ggplot() +
+    geom_raster(data = tb, aes(lon, lat, fill = model_max)) +
+    geom_sf(data = land, fill = NA, color = "black", linewidth = 0.4) +
+    scale_fill_manual(values = palette.colors(6, "Tableau 10") %>% unname(),
+                      name = NULL,
+                      guide = guide_legend(ncol = 3,
+                                           keywidth=0.7,
+                                           keyheight=0.7,
+                                           byrow = T)) +
+    facet_wrap(~wls, nrow = 1) +
+    coord_sf(xlim = c(range(tb$lon)), ylim = range(tb$lat), expand = F) +
+    theme(axis.title = element_blank(),
+          axis.ticks = element_blank(),
+          axis.text = element_blank(),
+          legend.position = "bottom",
+          legend.spacing.y = unit(3, 'point'),
+          legend.margin=margin(0,0,0,0)
+    ) +
+    labs(title = "Which model has the highest maximum?")
+}
+
+
+# ******
+
+fn_plot_dom_range <- function(tb) {
+  
+  ggplot() +
+    geom_raster(data = tb, aes(lon, lat, fill = range)) +
+    geom_sf(data = land, fill = NA, color = "black", linewidth = 0.4) +
+    colorspace::scale_fill_continuous_sequential("plasma",
+                                                 rev = F,
+                                                 limits = c(0, 25),
+                                                 breaks = c(0, 10,20, 25),
+                                                 labels = c("0", "10", "20", ">25"),
+                                                 # trans = "sqrt",
+                                                 name = NULL,
+                                                 oob = scales::squish,
+                                                 guide = guide_colorbar(barheight = 0.5,
+                                                                        barwidth = 12)
+    ) +
+    facet_wrap(~wls, nrow = 1) +
+    coord_sf(xlim = c(range(tb$lon)), ylim = range(tb$lat), expand = F) +
+    theme(axis.title = element_blank(),
+          axis.ticks = element_blank(),
+          axis.text = element_blank(),
+          legend.position = "bottom",
+          legend.margin=margin(0,0,0,0)) +
+    labs(title = "Range of values between models' maximums")
+  
+}
+
+
+
+```
+
+
+```{r}
+
+# Load global data
+
+l_s <- 
+  "/mnt/pers_disk/pf_max_tasmax/" %>% 
+  list.files(full.names = T) %>% 
+  str_subset("GLOBAL") %>% 
+  str_subset("tif") %>%
+  set_names(c("max_max_dif",
+              "max_max",
+              "max_mean_dif",
+              "max_mean")) %>% 
+  map(function(s) {
+    
+    read_stars(s, proxy = F)
+    
+  })
+
+
+```
+
+# RESULTS
+
+---
+
+```{r}
+
+# Max - 1 WL
+
+stat <- "max_max"
+stat_name <- "Max"
+
+tb <- 
+  l_s %>% 
+  pluck(stat) %>% 
+  setNames("v") %>% 
+  as_tibble() %>% 
+  mutate(v = if_else(x < -1.1e7 | (x > 1.1e7 & (y > 0.7e7 | y < -0.7e7)), 
+                     NA,
+                     v))
+
+wl_ <- "1"
+
+quants <- 
+  quantile(tb %>% filter(band == wl_) %>% pull(v), 
+           c(0.95, 0.99, 1), 
+           na.rm = T) %>% 
+  round() %>% 
+  unname()
+
+  
+fn_plot(tb, wl_, 15, 55, 10, 
+        c("<15", "25", "35", "45", ">55"), 
+        "°C",
+        "Maximum maximum temp.", 
+        stat_name)
+        
+
+# https://ggplot2.tidyverse.org/reference/continuous_scale.html
+# https://ggplot2.tidyverse.org/reference/scale_gradient.html
+# https://r-tmap.github.io/tmap-book/visual-variables.html
+
+
+```
+
+---
+
+```{r}
+
+# Max - 2 WL
+
+wl_ <- "2"
+
+quants <- 
+  quantile(tb %>% filter(band == wl_) %>% pull(v), 
+           c(0.95, 0.99, 1), 
+           na.rm = T) %>% 
+  round() %>% 
+  unname()
+
+  
+fn_plot(tb, wl_, 15, 55, 10, 
+        c("<15", "25", "35", "45", ">55"), 
+        "°C",
+        "Maximum maximum temp.", 
+        stat_name)
+
+```
+
+---
+
+```{r}
+
+# Max - 3 WL
+
+wl_ <- "3"
+
+quants <- 
+  quantile(tb %>% filter(band == wl_) %>% pull(v), 
+           c(0.95, 0.99, 1), 
+           na.rm = T) %>% 
+  round() %>% 
+  unname()
+
+  
+fn_plot(tb, wl_, 15, 55, 10, 
+        c("<15", "25", "35", "45", ">55"), 
+        "°C",
+        "Maximum maximum temp.", 
+        stat_name)
+
+
+
+```
+
+---
+
+```{r}
+
+# Max diff - 1 WL
+
+stat <- "max_max_dif"
+stat_name <- "Max"
+
+tb <- 
+  l_s %>% 
+  pluck(stat) %>% 
+  setNames("v") %>% 
+  as_tibble() %>% 
+  mutate(v = if_else(x < -1.1e7 | (x > 1.1e7 & (y > 0.7e7 | y < -0.7e7)), 
+                     NA,
+                     v))
+
+wl_ <- "1"
+
+fn_plot_dif(tb, wl_, -10, 10, 5,
+            c("< -10", "-5", "0", "5", "> 10"),
+            "°C",
+            "Difference in max. tasmax against WL 0.5 deg",
+            stat_name)
+
+
+```
+
+---
+
+```{r}
+
+# Max diff - 2 WL
+
+wl_ <- "2"
+
+fn_plot_dif(tb, wl_, -10, 10, 5,
+            c("< -10", "-5", "0", "5", "> 10"),
+            "°C",
+            "Difference in max. tasmax against WL 0.5 deg",
+            stat_name)
+
+```
+
+---
+
+```{r}
+
+# Max diff - 3 WL
+
+wl_ <- "3"
+
+fn_plot_dif(tb, wl_, -10, 10, 5,
+            c("< -10", "-5", "0", "5", "> 10"),
+            "°C",
+            "Difference in max. tasmax against WL 0.5 deg",
+            stat_name)
+
+
+```
+
+---
+
+```{r}
+
+# Mean - 1 WL
+
+stat <- "max_mean"
+stat_name <- "Mean"
+
+tb <- 
+  l_s %>% 
+  pluck(stat) %>% 
+  setNames("v") %>% 
+  as_tibble() %>% 
+  mutate(v = if_else(x < -1.1e7 | (x > 1.1e7 & (y > 0.7e7 | y < -0.7e7)), 
+                     NA,
+                     v))
+
+wl_ <- "1"
+
+quants <- 
+  quantile(tb %>% filter(band == wl_) %>% pull(v), 
+           c(0.95, 0.99, 1), 
+           na.rm = T) %>% 
+  round() %>% 
+  unname()
+
+  
+fn_plot(tb, wl_, 15, 55, 10, 
+        c("<15", "25", "35", "45", ">55"), 
+        "°C",
+        "Maximum maximum temp.", 
+        stat_name)
+
+
+```
+
+---
+
+```{r}
+
+# Mean - 2 WL
+
+wl_ <- "2"
+
+quants <- 
+  quantile(tb %>% filter(band == wl_) %>% pull(v), 
+           c(0.95, 0.99, 1), 
+           na.rm = T) %>% 
+  round() %>% 
+  unname()
+
+  
+fn_plot(tb, wl_, 15, 55, 10, 
+        c("<15", "25", "35", "45", ">55"), 
+        "°C",
+        "Maximum maximum temp.", 
+        stat_name)
+
+```
+
+---
+
+```{r}
+
+# Mean - 3 WL
+
+wl_ <- "3"
+
+quants <- 
+  quantile(tb %>% filter(band == wl_) %>% pull(v), 
+           c(0.95, 0.99, 1), 
+           na.rm = T) %>% 
+  round() %>% 
+  unname()
+
+  
+fn_plot(tb, wl_, 15, 55, 10, 
+        c("<15", "25", "35", "45", ">55"), 
+        "°C",
+        "Maximum maximum temp.", 
+        stat_name)
+
+
+
+```
+
+---
+
+
+```{r}
+
+# Mean diff - 1 WL
+
+stat <- "max_mean_dif"
+stat_name <- "Mean"
+
+tb <- 
+  l_s %>% 
+  pluck(stat) %>% 
+  setNames("v") %>% 
+  as_tibble() %>% 
+  mutate(v = if_else(x < -1.1e7 | (x > 1.1e7 & (y > 0.7e7 | y < -0.7e7)), 
+                     NA,
+                     v))
+
+wl_ <- "1"
+
+fn_plot_dif(tb, wl_, -10, 10, 5,
+            c("< -10", "-5", "0", "5", "> 10"),
+            "°C",
+            "Difference in max. tasmax against WL 0.5 deg",
+            stat_name)
+
+
+```
+
+---
+
+```{r}
+
+# Max diff - 2 WL
+
+wl_ <- "2"
+
+fn_plot_dif(tb, wl_, -10, 10, 5,
+            c("< -10", "-5", "0", "5", "> 10"),
+            "°C",
+            "Difference in max. tasmax against WL 0.5 deg",
+            stat_name)
+
+```
+
+---
+
+```{r}
+
+# Max diff - 3 WL
+
+wl_ <- "3"
+
+fn_plot_dif(tb, wl_, -10, 10, 5,
+            c("< -10", "-5", "0", "5", "> 10"),
+            "°C",
+            "Difference in max. tasmax against WL 0.5 deg",
+            stat_name)
+
+
+```
+
+---
+
+```{r}
+
+land <- "/mnt/bucket_mine/misc_data/ne_110m_land/ne_110m_land.shp" %>% 
+  st_read(quiet = T) %>% 
+  mutate(a = 1) %>% 
+  select(a)
+
+doms <- c("SEA", "AUS", "CAS", "WAS", "EAS", "AFR", "EUR", "NAM", "CAM", "SAM")
+
+l_s <- 
+  map(set_names(doms), function(dom) {
+    
+    ff <- 
+      "/mnt/pers_disk/pf_max_tasmax/" %>% 
+      list.files(full.names = T) %>% 
+      str_subset(dom) %>% 
+      str_subset("max-model|max-range|order_models")
+    
+    s <- 
+      ff[1] %>% 
+      read_ncdf() %>% 
+      suppressMessages() %>% 
+      slice(wls, c(2,4,6))
+    
+    lut <- 
+      read_lines(ff[3])
+    
+    
+    r <- 
+      ff[2] %>% 
+      read_ncdf() %>% 
+      suppressMessages() %>% 
+      slice(wls, c(2,4,6)) %>% 
+      setNames("range")
+    
+    
+    tb <- 
+      c(s, r) %>% 
+      st_set_dimensions(3, values = c("1.0", "2.0", "3.0")) %>% 
+      as_tibble() %>% 
+      mutate(model_max = lut[model_max]) %>% 
+      filter(!is.na(model_max))
+    
+    return(tb)
+    
+  })
+
+
+```
+
+
+```{r}
+#| layout-nrow: 2
+#| fig-height: 3.3
+#| fig-width: 10
+
+tb <- 
+    l_s %>% 
+    pluck(doms[1])
+
+p1 <- fn_plot_dom_mod(tb)
+p2 <- fn_plot_dom_range(tb)
+
+print(p1)
+print(p2)
+
+```
+
+---
+
+```{r}
+#| layout-nrow: 2
+#| fig-height: 3.3
+#| fig-width: 10
+
+tb <- 
+    l_s %>% 
+    pluck(doms[2])
+
+p1 <- fn_plot_dom_mod(tb)
+p2 <- fn_plot_dom_range(tb)
+
+print(p1)
+print(p2)
+
+```
+
+---
+
+```{r}
+#| layout-nrow: 2
+#| fig-height: 3.3
+#| fig-width: 10
+
+tb <- 
+    l_s %>% 
+    pluck(doms[3])
+
+p1 <- fn_plot_dom_mod(tb)
+p2 <- fn_plot_dom_range(tb)
+
+print(p1)
+print(p2)
+
+```
+
+---
+
+```{r}
+#| layout-nrow: 2
+#| fig-height: 3.3
+#| fig-width: 10
+
+tb <- 
+    l_s %>% 
+    pluck(doms[4])
+
+p1 <- fn_plot_dom_mod(tb)
+p2 <- fn_plot_dom_range(tb)
+
+print(p1)
+print(p2)
+
+```
+
+---
+
+```{r}
+#| layout-nrow: 2
+#| fig-height: 3.3
+#| fig-width: 10
+
+tb <- 
+    l_s %>% 
+    pluck(doms[5])
+
+p1 <- fn_plot_dom_mod(tb)
+p2 <- fn_plot_dom_range(tb)
+
+print(p1)
+print(p2)
+
+```
+
+---
+
+```{r}
+#| layout-nrow: 2
+#| fig-height: 3.3
+#| fig-width: 10
+
+tb <- 
+    l_s %>% 
+    pluck(doms[6])
+
+p1 <- fn_plot_dom_mod(tb)
+p2 <- fn_plot_dom_range(tb)
+
+print(p1)
+print(p2)
+
+```
+
+---
+
+```{r}
+#| layout-nrow: 2
+#| fig-height: 3.3
+#| fig-width: 10
+
+tb <- 
+    l_s %>% 
+    pluck(doms[7])
+
+p1 <- fn_plot_dom_mod(tb)
+p2 <- fn_plot_dom_range(tb)
+
+print(p1)
+print(p2)
+
+```
+
+---
+
+```{r}
+#| layout-nrow: 2
+#| fig-height: 3.3
+#| fig-width: 10
+
+tb <- 
+    l_s %>% 
+    pluck(doms[8])
+
+p1 <- fn_plot_dom_mod(tb)
+p2 <- fn_plot_dom_range(tb)
+
+print(p1)
+print(p2)
+
+```
+
+---
+
+```{r}
+#| layout-nrow: 2
+#| fig-height: 3.3
+#| fig-width: 10
+
+tb <- 
+    l_s %>% 
+    pluck(doms[9])
+
+p1 <- fn_plot_dom_mod(tb)
+p2 <- fn_plot_dom_range(tb)
+
+print(p1)
+print(p2)
+
+```
+
+---
+
+```{r}
+#| layout-nrow: 2
+#| fig-height: 3.3
+#| fig-width: 10
+
+tb <- 
+    l_s %>% 
+    pluck(doms[10])
+
+p1 <- fn_plot_dom_mod(tb)
+p2 <- fn_plot_dom_range(tb)
+
+print(p1)
+print(p2)
+
+```
