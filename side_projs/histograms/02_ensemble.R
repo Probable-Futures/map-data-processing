@@ -1,12 +1,7 @@
 
-# CHOOSE STATISTICS TO CALCULATE
-stats <- c("conventional",
-           "100_perc")[2]
-
-
 
 # CHOOSE VARIABLE(S) TO PROCESS
-var_index <- c(1)
+var_index <- c(5)
 
 # 1 - days-above-32C
 # 2 - days-above-35C
@@ -70,7 +65,7 @@ wls <- c("0.5", "1.0", "1.5", "2.0", "2.5", "3.0")
 
 # load thresholds table
 thresholds <- 
-  str_glue("cmip5_model_temp_thresholds.csv") %>% 
+  "cmip5_model_temp_thresholds.csv" %>% 
   read_delim() %>%
   suppressMessages() %>% 
   select(1:6) %>% 
@@ -89,9 +84,7 @@ thresholds <-
 
 
 # load table of all variables
-tb_vars_all <-
-  read_csv("pf_variable_table.csv") %>% 
-  suppressMessages()
+source("scripts/tb_vars_all.R")
 
 # subset those that will be processed
 tb_vars <- 
@@ -104,6 +97,8 @@ tb_vars <-
 
 for(dom in doms){
   
+  # dom = "CAM"
+  
   print(str_glue(" "))
   print(str_glue("PROCESSING {dom}"))
   
@@ -112,6 +107,8 @@ for(dom in doms){
   # VARIABLE LOOP -------------------------------------------------------------
   
   for(derived_var in tb_vars$var_derived){
+    
+    # derived_var = tb_vars$var_derived
     
     print(str_glue(" "))
     print(str_glue("Processing {derived_var}"))
@@ -132,7 +129,7 @@ for(dom in doms){
       dir_derived %>% 
       list.files() %>% 
       str_subset(dom) %>% 
-      str_subset(derived_var)
+      str_subset(str_glue("_{derived_var}_"))
     
     
     # import files into a list
@@ -382,6 +379,8 @@ for(dom in doms){
     
     ## CALCULATE STATISTICS ---------------------------------------------------
     
+    
+    # calculate min and (quasi) max
     s_range <- 
       l_s_wl %>% 
       {do.call(c, c(., along = "time"))} %>% 
@@ -412,68 +411,84 @@ for(dom in doms){
           
           st_apply(c(1,2), function(ts){
             
-            if (stats == "conventional") {
+            
+            # {
+            #   l_s_wl %>%
+            #     pluck(iwl) %>%
+            #     c(s_range, along = "time") %>%
+            #     .[,sample(289,1), sample(301,1),] %>%
+            #     pull() %>%
+            #     as.vector() -> ts
               
-              if(any(is.na(ts))){
-                
-                # if a given grid cell is empty, propagate NAs
-                
-                c(mean = NA,
-                  perc05 = NA, 
-                  perc50 = NA,
-                  perc95 = NA)
-                
-              } else {
-                
-                c(mean = mean(head(ts, -2)),
-                  quantile(ts, c(0.05, 0.5, 0.95)) %>%
-                    setNames(c("perc05", "perc50", "perc95")))
-                
-              }
+            
+            if(any(is.na(ts))){
               
-              # *************
+              # if a given grid cell is empty, propagate NAs
               
-            } else if (stats == "100_perc") {
+              rep(NA, 30*2) %>% 
+                set_names(c(str_glue("x{1:30}"),
+                            str_glue("y{1:30}")))
               
-              if(any(is.na(ts))){
+            } else {
+              
+              
+              r <- tail(ts, 2)
+              r <- c(floor(r[1]), ceiling(r[2]))
+              
+              # if all values are 0 output only 2
+              if (r[1] == 0 & r[2] == 0) {
                 
-                # if a given grid cell is empty, propagate NAs
-                
-                # rep(NA, 101) %>% 
-                #   set_names(str_glue("perc{str_pad(0:100, 2, 'left', '0')}"))
-                
-                rep(NA, 30*2) %>% 
+                c(c(0, 1, rep(NA, 28)),
+                  c(1, 0, rep(NA, 28))) %>% 
                   set_names(c(str_glue("x{1:30}"),
                               str_glue("y{1:30}")))
                 
+                
+              # } else if (length(seq(r[1], ceiling(r[2]))) <= 30) {
+              } else if (length(seq(r[1], r[2])) <= 30) {
+                
+                ts_ <- head(ts, -2)
+                
+                # xx <- seq(r[1], ceiling(r[2]))
+                xx <- seq(r[1], r[2])
+                
+                yy <- 
+                  cut(ts_, c(-Inf,xx), labels = NULL) %>% 
+                  table() %>% 
+                  unname() %>% 
+                  {round(./sum(.),2)}
+                
+                c(
+                  c(xx, rep(NA, 30-length(xx))),
+                  c(yy, rep(NA, 30-length(yy)))
+                  ) %>% 
+                  set_names(c(str_glue("x{1:30}"),
+                              str_glue("y{1:30}")))
+                  
               } else {
                 
-                # quantile(ts, c(seq(0,1, by = 0.01)), type = 3) %>%
-                #   set_names(str_glue("perc{str_pad(0:100, 2, 'left', '0')}"))
+                ts_ <- head(ts, -2)
                 
-                r <- tail(ts, 2)
+                # xx <- seq(r[1], ceiling(r[2]), length.out = 30)
+                xx <- seq(r[1], r[2], length.out = 30)
                 
-                if (r[2] == 0) {
-                  
-                  c(seq(0, 1, length.out = 30),
-                    100, rep(0, 29)) %>% 
-                    set_names(c(str_glue("x{1:30}"),
-                                str_glue("y{1:30}")))
-                  
-                } else {
-                  
-                  ts_ <- head(ts, -2)
-                  
-                  d <- density(ts_, n = 30, bw = 2, from = r[1], to = r[2])
-                  
-                  c(x = d$x,
-                    y = d$y/sum(d$y)*100)
-                  
-                }
+                yy <- 
+                  cut(ts_, c(-Inf,xx), labels = NULL) %>% 
+                  table() %>% 
+                  unname() %>% 
+                  {round(./sum(.),2)}
+                
+                c(xx, yy) %>% 
+                  set_names(c(str_glue("x{1:30}"),
+                              str_glue("y{1:30}")))
                 
               }
               
             }
+              
+            # }# delete
+            
+            
             
             
           },
@@ -498,19 +513,9 @@ for(dom in doms){
     
     print(str_glue("Saving result"))
     
-    if (stats == "conventional") {
-      
-      res_filename <-
-        str_glue(
-          "{dir_ensembled}/{dom}_{derived_var}_ensemble.nc")
-      
-    } else if (stats == "100_perc") { 
-      
-      res_filename <-
-        str_glue(
-          "{dir_ensembled}/{dom}_{derived_var}_ensemble_density.nc")
-      
-    }
+    res_filename <-
+      str_glue(
+        "{dir_ensembled}/{dom}_{derived_var}_ensemble_density_v2.nc")
     
     fn_write_nc(s_result, res_filename, "wl")
     
@@ -518,4 +523,5 @@ for(dom in doms){
   }
   
 }
+
 

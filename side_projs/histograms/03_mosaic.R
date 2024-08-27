@@ -1,12 +1,6 @@
 
-# CHOOSE STATISTICS TO CALCULATE
-stats <- c("conventional",
-           "100_perc")[2]
-
-
-
 # CHOOSE VARIABLE(S) TO PROCESS
-var_index <- c(1)
+var_index <- c(4)
 
 # 1 - days-above-32C
 # 2 - days-above-35C
@@ -68,9 +62,7 @@ wls <- c("0.5", "1.0", "1.5", "2.0", "2.5", "3.0")
 
 
 # load table of all variables
-tb_vars_all <-
-  read_csv("pf_variable_table.csv") %>% 
-  suppressMessages()
+source("scripts/tb_vars_all.R")
 
 # subset those that will be processed
 tb_vars <- 
@@ -78,7 +70,6 @@ tb_vars <-
 
 
 derived_vars <- tb_vars$var_derived
-
 
 
 # PRE-PROCESS -----------------------------------------------------------------
@@ -106,7 +97,7 @@ l_s_valid <-
       list.files(full.names = T) %>%
       str_subset(dom) %>%
       str_subset("ensemble.nc") %>%  # filter out 100_perc maps
-      str_subset(template_var) %>%
+      str_subset(str_glue("_{template_var}_")) %>%
       read_ncdf(ncsub = cbind(start = c(1, 1, 1), 
                               count = c(NA,NA,1))) %>% # only 1 timestep
       suppressMessages() %>% 
@@ -310,7 +301,9 @@ dir_tmp <- "/mnt/pers_disk/tmp"
 # loop through variables
 
 walk(derived_vars, function(derived_var){
-  # 
+  
+  # derived_var = derived_vars[1] 
+  
   print(str_glue(" "))
   print(str_glue("Mosaicking {derived_var}"))
   
@@ -337,7 +330,8 @@ walk(derived_vars, function(derived_var){
         list.files(full.names = T) %>%
         str_subset(dom) %>%
         str_subset(str_glue("{derived_var}_ensemble")) %>%
-        str_subset("density", negate = (stats != "100_perc")) %>% #.[2] %>% # type 7
+        # str_subset("density_v2") %>%
+        str_subset("ensemble_cdf_v2") %>% 
         read_ncdf %>%
         suppressMessages()
       
@@ -400,12 +394,20 @@ walk(derived_vars, function(derived_var){
           
           map(orig_names, function(v_){
             
-            c(s %>% select(all_of(v_)) %>% setNames("v"),
-              w) %>% 
+            # if(str_sub(v_, end = 1) == "x") {
+            #   s %>% select(all_of(v_))
+            # } else {
               
-              mutate(v = v*weights) %>% 
-              select(-weights) %>% 
-              setNames(v_)
+              c(s %>% select(all_of(v_)) %>% setNames("v"),
+                w) %>% 
+                
+                mutate(v = v*weights) %>% 
+                select(-weights) %>% 
+                setNames(v_)
+              
+            # }
+            
+            
             
           }) #%>% 
           #do.call(c, .)
@@ -495,40 +497,44 @@ walk(derived_vars, function(derived_var){
   #
   
   # round
-  # l_mos_wl <-
-  #   l_mos_wl %>%
-  #   map(function(s){
-  #     
-  #     if(final_name == "change-water-balance"){
-  #       
-  #       s %>%
-  #         rename(a = 1) %>%
-  #         mutate(a = round(a, 1)) %>%
-  #         setNames(wl)
-  #       
-  #       # } else if(final_name == "intensity-heat-wave") {                            # ************** intensity !!!!
-  #       #   
-  #       #   s %>%     
-  #       #     rename(a = 1) %>%
-  #       #     mutate(a = round(a, 2)) %>%
-  #       #     setNames(wl)
-  #       
-  #     } else if(str_detect(final_name, "drought") | str_detect(final_name, "heatwave")){
-  #       
-  #       s %>%
-  #         rename(a = 1) %>%
-  #         mutate(a = a * 100,
-  #                a = as.integer(round(a))) %>%
-  #         setNames(wl)
-  #       
-  #     } else {
-  #       
-  #       s %>%
-  #         round()
-  #       
-  #     }
-  #     
-  #   })
+  l_mos_wl <-
+    l_mos_wl %>%
+    map(function(s){
+
+      if(final_name == "change-water-balance"){
+
+        # s %>%
+        #   rename(a = 1) %>%
+        #   mutate(a = round(a, 2)) %>%
+        #   setNames(wl)
+        
+        round(s, 2)
+
+        # } else if(final_name == "intensity-heat-wave") {                            # ************** intensity !!!!
+        #
+        #   s %>%
+        #     rename(a = 1) %>%
+        #     mutate(a = round(a, 2)) %>%
+        #     setNames(wl)
+
+      } else if(str_detect(final_name, "drought") | str_detect(final_name, "heatwave")){
+
+        # s %>%
+        #   rename(a = 1) %>%
+        #   mutate(a = as.integer(round(a*100))) %>%
+        #   setNames(wl)
+        
+        round(s * 100)
+
+      } else {
+
+        s %>%
+          round()
+
+      }
+
+    })
+  
   
   
   s <- 
@@ -561,55 +567,33 @@ walk(derived_vars, function(derived_var){
   # save as nc
   print(str_glue("  Saving"))
   
-  if (stats == "conventional") {
-    
-    file_name <- str_glue("{dir_mosaicked}/{vol}/v3/{final_name}_v03.nc") # *******************
-    
-  } else if (stats == "100_perc") { 
-    
-    # file_name <- str_glue("{dir_mosaicked}/{vol}/v3/{final_name}_v03_100perc_type3.nc") # *******************
-    file_name <- str_glue("/mnt/pers_disk/{final_name}_v03_100perc_type3.nc") # *******************
-    file_name <- str_glue("/mnt/pers_disk/{final_name}_v03_100perc_type7_round.nc")
-    file_name <- str_glue("/mnt/pers_disk/{final_name}_v03_density_v01.nc")
-    
-  }
+  
+  # file_name <- str_glue("{dir_mosaicked}/{vol}/v3/{final_name}_v03_100perc_type3.nc") # *******************
+  # file_name <- str_glue("/mnt/pers_disk/{final_name}_v03_100perc_type3.nc") # *******************
+  # file_name <- str_glue("/mnt/pers_disk/{final_name}_v03_100perc_type7_round.nc")
+  file_name <- str_glue("/mnt/pers_disk/{final_name}_v03_cdf_v02.nc")
+  
   
   fn_write_nc(s, file_name, "wl")
+  
+  "gsutil mv {file_name} gs://clim_data_reg_useast1/results/global_heat_pf/all-stats/{vol}" %>% 
+    str_glue() %>% 
+    system()
   
   
 })
 
 
 
-dir_disk %>% 
-  fs::dir_ls(regexp = ".nc") %>% 
-  walk(function(f) {
-    
-    str_glue("gsutil cp {f} gs://clim_data_reg_useast1/misc_data/temporary/") %>%
-      system()
-    
-    fs::file_delete(f)
-    
-  })
 
 
 
 
 # Sync to s3 bucket
-walk(derived_vars, function(derived_var){
+walk(c("heat", "water", "land"), function(vol){
   
-  # final_name <- 
-  #   tb_vars %>% 
-  #   filter(var_derived == derived_var) %>% 
-  #   pull(var_final)
-  
-  vol <- 
-    tb_vars %>% 
-    filter(var_derived == derived_var) %>% 
-    pull(volume)
-  
-  dir_gs <- str_glue("{dir_results_gs}/03_mosaicked/{vol}/v3")
-  dir_s3 <- str_glue("s3://global-pf-data-engineering/climate-data/v3/{vol}/03_mosaicked")
+  dir_gs <- str_glue("gs://clim_data_reg_useast1/results/global_heat_pf/all-stats/{vol}")
+  dir_s3 <- str_glue("s3://global-pf-data-engineering/climate-data-with-all-stats/{vol}")
   
   str_glue("gsutil rsync -r {dir_gs} {dir_s3}") %>% 
     system()

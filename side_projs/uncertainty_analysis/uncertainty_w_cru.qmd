@@ -1,0 +1,490 @@
+---
+title: "Uncertainty analysis (with CRU)"
+execute: 
+  echo: false
+  fig-width: 10
+  fig-height: 7
+format: 
+  revealjs:
+    self-contained: true
+    
+---
+
+```{r}
+#| label: setup
+#| include: false
+
+library(tidyverse)
+library(stars)
+library(furrr)
+
+options(future.fork.enable = T)
+plan(multicore, workers = 10)
+
+dir_data <- "/mnt/pers_disk/data_uncertainty_pf/"
+
+
+fn_main_1 <- function(vol, var_cordex, var_cru, agg) {
+  
+  
+  res <- vector("list", 2)
+  
+  
+  # LOAD CORDEX ENSEMBLE
+  
+  cordex <- 
+    "/mnt/bucket_mine/results/global_heat_pf/03_mosaicked/{vol}/v3/{var_cordex}.nc" %>% 
+    str_glue() %>% 
+    read_ncdf() %>%
+    slice(wl, 1:2) %>% 
+    merge(name = "stats") %>% 
+    setNames("cordex")
+  
+  
+  
+  # LOAD AND AGGREGATE CRU
+  
+  ss <- 
+    map(c(1971,1981,1991,2001,2011), function(i) {
+      
+      # print(i)
+      
+      s <- 
+        read_mdim(
+          str_glue("/vsigzip//vsicurl/https://crudata.uea.ac.uk/cru/data/hrg/cru_ts_4.07/cruts.2304141047.v4.07/{var_cru}/cru_ts4.07.{i}.{i+9}.{var_cru}.dat.nc.gz"),
+          variable = var_cru) %>% 
+        units::drop_units()
+      
+      s_annual <- 
+        aggregate(s, by = "1 year", agg) %>%
+        aperm(c(2,3,1))
+      
+      s_warped <- 
+        s_annual %>% 
+        st_warp(cordex)
+      
+      return(s_warped)
+      
+    })
+  
+  
+  
+  # CALCULATE STATS FOR CRU
+  cru <- 
+    do.call(c, ss) %>% 
+    setNames("cru")
+  
+  cru_wl05 <- cru %>% filter(year(time) >= 1971,
+                             year(time) <= 2000)
+  
+  cru_wl10 <- cru %>% filter(year(time) >= 2000,
+                             year(time) <= 2020)
+  
+  
+  stats <- 
+    list(cru_wl05, cru_wl10) %>%  
+    future_map(function(s) {
+      
+      s %>% 
+        st_apply(c(1,2), function(x) {
+          
+          if(any(is.na(x))){
+            
+            c(mean = NA,
+              perc05 = NA, 
+              perc50 = NA,
+              perc95 = NA)
+            
+          } else {
+            
+            c(mean = mean(x),
+              quantile(x, c(0.05, 0.5, 0.95)) %>%
+                setNames(c("perc05", "perc50", "perc95")))
+            
+          }
+          
+        },
+        .fname = "stats") %>% 
+        aperm(c(2,3,1))
+      
+    })
+  
+  
+  if (str_detect(var_cordex, "change")) {
+    
+    stats <-
+      list(stats[[1]],
+           stats[[2]] - stats[[1]])
+    
+  }
+  
+  
+  res[[1]] <- 
+    stats %>% 
+    map2(list(slice(cordex, wl, 1), 
+              slice(cordex, wl, 2)), 
+         
+         function(s, cor) {
+           
+           c(s, cor) %>% 
+             mutate(dif = cordex - cru) %>% 
+             select(dif)
+           
+         })
+  
+  
+  if (!str_detect(var_cordex, "change")) {
+    
+    res[[2]] <- 
+      c(stats[[2]] - stats[[1]],
+        slice(cordex, wl, 2) - slice(cordex, wl, 1)) %>% 
+      mutate(dif = cordex - cru) %>% 
+      select(dif)
+    
+  }
+  
+  return(res)
+  
+}
+
+
+
+fn_main_2 <- function(r, lim_1, lim_2, lim_3 = NA, revv, 
+                      title_1, title_2 = title_1, title_3 = title_1){
+  
+  res <- vector("list", 3)
+  
+  res[[1]] <- 
+    r[[1]][[1]] %>% 
+    as_tibble() %>% 
+    ggplot(aes(lon, lat, fill = dif)) +
+    geom_raster() + 
+    colorspace::scale_fill_binned_diverging(na.value = "transparent",
+                                            n.breaks = 9,
+                                            guide = guide_colorsteps(barheight = 12,
+                                                                     barwidth = 0.6),
+                                            name = NULL,
+                                            limits = lim_1,
+                                            show.limits = T,
+                                            rev = revv
+    ) +
+    facet_wrap(~stats, ncol = 2) +
+    coord_cartesian(ylim = c(-55, 75), xlim = c(-155, 160)) +
+    theme(axis.title = element_blank()) +
+    labs(title = str_glue("{title_1}: 0.5°C WL"))
+  
+  
+  res[[2]] <- 
+    r[[1]][[2]] %>% 
+    as_tibble() %>% 
+    ggplot(aes(lon, lat, fill = dif)) +
+    geom_raster() + 
+    colorspace::scale_fill_binned_diverging(na.value = "transparent",
+                                            n.breaks = 9,
+                                            guide = guide_colorsteps(barheight = 12,
+                                                                     barwidth = 0.6),
+                                            name = NULL,
+                                            limits = lim_2,
+                                            rev = revv
+    ) +
+    facet_wrap(~stats, ncol = 2) +
+    coord_cartesian(ylim = c(-55, 75), xlim = c(-155, 160)) +
+    theme(axis.title = element_blank()) +
+    labs(title = str_glue("{title_2}: 1.0°C WL"))
+  
+  
+  if (!is.null(r[[2]])) {
+    
+    res[[3]] <- 
+      r[[2]] %>% 
+      as_tibble() %>% 
+      ggplot(aes(lon, lat, fill = dif)) +
+      geom_raster() + 
+      colorspace::scale_fill_binned_diverging(na.value = "transparent",
+                                              n.breaks = 9,
+                                              guide = guide_colorsteps(barheight = 12,
+                                                                       barwidth = 0.6),
+                                              name = NULL,
+                                              limits = lim_3,
+                                              rev = revv) +
+      facet_wrap(~stats, ncol = 2) +
+      coord_cartesian(ylim = c(-55, 75), xlim = c(-155, 160)) +
+      theme(axis.title = element_blank()) +
+      labs(title = str_glue("{title_3}: 1.0°C - 0.5°C WL"))
+    
+  }
+  
+  return(res)
+  
+}
+
+```
+
+
+```{r}
+
+fn_agg <- function(f) mean(f)
+
+a <- fn_main_1("heat",
+               "average-temperature_v03",
+               "tmp",
+               fn_agg)
+
+# lim_1 <-
+#   a[[1]][[1]] %>% 
+#   slice(stats, 1) %>%
+#   pull() %>%
+#   quantile(c(0.01, 0.99), na.rm = T) %>%
+#   round() %>%
+#   abs() %>%
+#   max()
+
+
+b <- fn_main_2(a,
+               c(-6,6),
+               c(-6,6),
+               c(-3,3),
+               F,
+               "Average temperature")
+
+```
+
+```{r}
+
+print(b[[1]])
+
+```
+
+---
+
+```{r}
+
+print(b[[2]])
+
+```
+
+---
+
+```{r}
+
+print(b[[3]])
+
+```
+
+---
+
+```{r}
+
+fn_agg <- function(f) sum(f)
+
+a <- fn_main_1("water",
+               "change-total-annual-precipitation_v03",
+               "pre",
+               fn_agg)
+
+b <- fn_main_2(r = a,
+               lim_1 = c(-500,500),
+               lim_2 = c(-300,300),
+               revv = T,
+               title_1 = "Total annual precipitation",
+               title_2 = "Change in total annual precip. rel. to 0.5 WL")
+```
+
+```{r}
+
+print(b[[1]])
+
+```
+
+---
+
+```{r}
+
+print(b[[2]])
+
+```
+
+---
+
+```{r}
+
+res <- vector("list", 2)
+
+
+# LOAD CORDEX ENSEMBLE
+
+cordex <-
+  "/mnt/bucket_mine/results/global_heat_pf/03_mosaicked/land/v3/change-water-balance_v03.nc" %>%
+  str_glue() %>%
+  read_ncdf() %>%
+  slice(wl, 1:2) %>%
+  merge(name = "stats") %>%
+  setNames("cordex")
+
+
+
+# LOAD AND AGGREGATE CRU
+
+ss <- map(c("pre", "pet"), function(var_cru){
+  
+  map(c(1971,1981,1991,2001,2011), function(i) {
+    
+    # print(i)
+    
+    read_mdim(
+      str_glue("/vsigzip//vsicurl/https://crudata.uea.ac.uk/cru/data/hrg/cru_ts_4.07/cruts.2304141047.v4.07/{var_cru}/cru_ts4.07.{i}.{i+9}.{var_cru}.dat.nc.gz"),
+      variable = var_cru)
+    
+  }) %>%
+    
+    do.call(c, .)
+    
+})
+
+
+time_vector <- st_get_dimension_values(ss[[2]], "time")
+days_month <- days_in_month(time_vector) %>% unname()
+
+plan(multicore, workers = 6)
+
+ss[[2]] <- 
+  ss[[2]] %>%
+  st_apply(c(1,2), function(x){
+    x * days_month
+  },
+  .fname = "time",
+  FUTURE = T) %>% 
+  aperm(c(2,3,1))
+
+wb <- 
+  c(units::drop_units(ss[[1]]),
+  ss[[2]] %>% st_set_dimensions(3, value = time_vector)) %>% 
+  mutate(wb = pre-pet) %>% 
+  select(wb)
+  
+spei <- 
+  wb %>% 
+  st_apply(c(1,2), function(x){
+    
+    if(all(is.na(x))){
+      rep(NA, length(x))
+    } else {
+      s <- SPEI::spei(x, 12, ref.end = c(30,12), verbose = F)$fitted
+      s[is.infinite(s)] <- NA
+      imputeTS::na_interpolation(s)
+    }
+    
+  },
+  .fname = "time",
+  FUTURE = T) %>% 
+  aperm(c(2,3,1))
+
+spei <- 
+  spei %>% 
+  st_set_dimensions(3, values = time_vector)
+
+s_annual <- 
+  aggregate(spei, by = "1 year", mean) %>%
+  aperm(c(2,3,1))
+      
+s_warped <- 
+  s_annual %>% 
+  st_warp(cordex)
+
+
+cru_wl05 <- s_warped %>% filter(year(time) >= 1972, ####
+                           year(time) <= 2000)
+
+cru_wl10 <- s_warped %>% filter(year(time) >= 2000,
+                           year(time) <= 2020)
+
+
+stats <- 
+  list(cru_wl05, cru_wl10) %>%  
+  future_map(function(s) {
+    
+    s %>% 
+      st_apply(c(1,2), function(x) {
+        
+        if(any(is.na(x))){
+          
+          c(mean = NA,
+            perc05 = NA, 
+            perc50 = NA,
+            perc95 = NA)
+          
+        } else {
+          
+          c(mean = round(mean(x), 1),
+            quantile(x, c(0.05, 0.5, 0.95)) %>%
+              round(1) %>% 
+              setNames(c("perc05", "perc50", "perc95")))
+          
+        }
+        
+      },
+      .fname = "stats") %>% 
+      aperm(c(2,3,1))
+    
+  })
+
+
+# if (str_detect(var_cordex, "change")) {
+#   
+#   stats <-
+#     list(stats[[1]],
+#          stats[[2]] - stats[[1]])
+#   
+# }
+
+write_rds(stats[[2]], "temp.rds")
+
+res[[1]] <- 
+  c(stats[[2]], cordex %>% slice(wl, 2)) %>% 
+           mutate(dif = if_else(cordex == -88888, NA, cordex - wb)) %>% 
+           select(dif)
+
+
+res[[1]] %>% 
+  as_tibble() %>% 
+  filter(stats == "mean") %>% 
+  ggplot(aes(lon, lat, fill = dif)) +
+  geom_raster() + 
+  colorspace::scale_fill_binned_diverging(na.value = "transparent",
+                                          n.breaks = 11,
+                                          guide = guide_colorsteps(barheight = 12,
+                                                                   barwidth = 0.6),
+                                          name = NULL,
+                                          limits = c(-1.5,1.5),
+                                          show.limits = T,
+                                          rev = T
+  ) +
+  coord_cartesian(ylim = c(-55, 75), xlim = c(-155, 160)) +
+  theme(axis.title = element_blank()) +
+  labs(title = str_glue("Change in water balance rel. to 0.5 WL: 1.0°C WL"))
+
+
+```
+
+```{r}
+
+print(b[[1]])
+
+```
+
+---
+
+```{r}
+
+print(b[[2]])
+
+```
+
+--- 
+
+```{r}
+
+print(b[[3]])
+
+```
+

@@ -4,14 +4,15 @@ library(stars)
 
 
 
-dir_mosaicked <- "/mnt/bucket_mine/results/global_heat_pf/03_mosaicked/heat/v3"
+# dir_mosaicked <- "/mnt/bucket_mine/results/global_heat_pf/03_mosaicked/heat/v3"
+dir_mosaicked <- "/mnt/bucket_mine/results/misc"
 dir_csv <- "/mnt/bucket_mine/results/global_heat_pf/csv/heat"
 
 
 dir_mosaicked %>% 
   list.files() %>% 
-  str_subset("ten-hottest") %>%  # *******************
-  str_subset("wetbulb", negate = T) %>% 
+  str_subset("three") %>% str_subset("ensmxmn") %>%   # *******************
+  # str_subset("wetbulb", negate = T) %>% 
   walk(function(f){
     
     print(f)

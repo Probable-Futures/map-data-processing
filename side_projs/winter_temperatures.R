@@ -7,7 +7,7 @@ library(units)
 options(future.fork.enable = T)
 plan(multicore)
 
-source("functions.R")
+source("scripts/functions.R")
 
 
 varr <- "average_temperature"
@@ -206,7 +206,7 @@ wls <- c("0.5", "1.0", "1.5", "2.0", "2.5", "3.0")
 
 # load thresholds table
 thresholds <- 
-  "../../map-data-processing/cmip5_model_temp_thresholds.csv" %>% 
+  "../map-data-processing/cmip5_model_temp_thresholds.csv" %>% 
   read_delim() %>%
   suppressMessages() %>% 
   select(1:6) %>% 
@@ -355,16 +355,22 @@ for (dom in doms) {
             # if a given grid cell is empty, propagate NAs
             if(any(is.na(ts))){
               
-              c(mean = NA,
-                perc05 = NA, 
-                perc50 = NA,
-                perc95 = NA)
+              # c(mean = NA,
+              #   perc05 = NA, 
+              #   perc50 = NA,
+              #   perc95 = NA)
+              
+              rep(NA, 101) %>%
+                set_names(str_glue("perc_{seq(0, 100)}"))
               
             } else {
               
-              c(mean = mean(ts),
-                quantile(ts, c(0.05, 0.5, 0.95)) %>%
-                  setNames(c("perc05", "perc50", "perc95")))
+              # c(mean = mean(ts),
+              #   quantile(ts, c(0.05, 0.5, 0.95)) %>%
+              #     setNames(c("perc05", "perc50", "perc95")))
+              
+              quantile(ts, c(seq(0,1, by = 0.01))) %>%
+                set_names(str_glue("perc_{seq(0, 100)}"))
               
             }
             
@@ -611,14 +617,14 @@ l_s_weights <-
 # LAND MASK
 
 land <- 
-  "../../map-data-processing/buffered_ocean_mask.nc" %>% 
+  "../map-data-processing/buffered_ocean_mask.nc" %>% 
   read_ncdf() %>%
   st_warp(global) %>% 
   setNames("a")
 
 
 # MOSAIC *******************************************
-
+# to mosaic 100 perc maps, go to next section
 
 
 l_s <- 
@@ -807,4 +813,223 @@ fn_write_nc(s %>% st_set_dimensions(3, values = seq(0.5, 3.0, 0.5)),
 
 
 
+
+# MOSAIC 100 perc maps *******************************************
+
+source("scripts/functions.R")
+
+dir_tmp <- "/mnt/pers_disk/tmp"
+
+l_s <- 
+  
+  map(c("north", "south") %>% set_names(), function(hemi) {
+    
+    l_s <- 
+      map(doms %>% set_names(), function(dom){
+        
+        print(dom)
+        
+        # load ensembled map 
+        s <- 
+          dir_winter_doms %>%
+          list.files(full.names = T) %>%
+          str_subset(dom) %>%
+          str_subset("winter_tas") %>%
+          read_rds() %>% 
+          pluck(hemi)
+        
+        s <- 
+          s %>% 
+          st_set_dimensions(1, st_get_dimension_values(s, 1) %>% round(1) %>% {.-0.1}) %>% 
+          st_set_dimensions(2, st_get_dimension_values(s, 2) %>% round(1) %>% {.-0.1}) %>% 
+          st_set_crs(4326)
+        
+        # # fix domains trespassing the 360 meridian 
+        if(dom == "EAS"){
+          
+          s <- 
+            s %>% 
+            filter(lon < 180)
+          
+        } else if(dom == "AUS"){
+          
+          s1 <- 
+            s %>% 
+            filter(lon < 180)
+          
+          s2 <- 
+            s %>% 
+            filter(lon >= 180)
+          
+          s2 <- 
+            st_set_dimensions(s2, 
+                              which = "lon", 
+                              values = st_get_dimension_values(s2, 
+                                                               "lon", 
+                                                               center = F)-360) %>% 
+            st_set_crs(4326)
+          
+          s <- list(AUS1 = s1, 
+                    AUS2 = s2)
+          
+        }
+        
+        return(s)
+      })
+    
+    l_s <- append(l_s[1:9], l_s[[10]])
+    
+    
+    
+    l_mos_wl <- 
+      
+      # loop through warming levels
+      imap(wls, function(wl, wl_pos){
+        
+        print(str_glue("    {wl}"))
+        
+        
+        l_s_wl <-
+          l_s %>% 
+          map(slice, wl, wl_pos) %>% 
+          map(st_warp, global)
+        
+        # APPLY WEIGHTS
+        l_s_weighted <- 
+          
+          map2(l_s_wl, l_s_weights, function(s, w){
+            
+            orig_names <- names(s)
+            
+            map(orig_names, function(v_){
+              
+              c(s %>% select(all_of(v_)) %>% setNames("v"),
+                w) %>% 
+                
+                mutate(v = v*weights) %>% 
+                select(-weights) %>% 
+                setNames(v_)
+              
+            })
+            
+          })
+        
+        
+        l_s_weighted <- 
+          transpose(l_s_weighted)
+        
+        rm(l_s_wl)
+        
+        
+        
+        # MOSAIC
+        
+        dir.create(dir_tmp)
+        
+        iwalk(l_s_weighted, function(l, i) {
+          
+          do.call(c, c(l, along = "a")) %>% 
+            st_apply(c(1,2), function(foo){
+              
+              if(all(is.na(foo))){
+                NA
+              } else {
+                sum(foo, na.rm = T)
+              }
+            }) %>% 
+            write_rds(str_glue("{dir_tmp}/s_{str_pad(i, 3, 'left', '0')}.rds"))
+          
+        })
+        
+        rm(l_s_weighted)
+        
+        mos <- 
+          dir_tmp %>% 
+          fs::dir_ls() %>% 
+          map(read_rds) %>% 
+          unname() %>% 
+          do.call(c, .)
+        
+        unlink(dir_tmp, recursive = T)
+        
+        return(mos)
+        
+      })
+    
+    
+    rm(l_s)
+    
+    
+    # round
+    l_mos_wl <-
+      l_mos_wl %>%
+      map(function(s){
+        
+        s %>% 
+          round()
+        
+        
+      })
+    
+    
+    s <- 
+      l_mos_wl %>% 
+      {do.call(c, c(., along = "wl"))} %>% 
+      st_set_dimensions(3, values = as.numeric(wls))
+    
+    
+    write_rds(s, str_glue("/mnt/pers_disk/s_{hemi}.rds"))
+    
+    
+  })
+
+
+s_north <- 
+  "/mnt/pers_disk/s_north.rds" %>% 
+  read_rds() %>% 
+  filter(lat >= 0)
+
+s_south <- 
+  "/mnt/pers_disk/s_south.rds" %>% 
+  read_rds() %>% 
+  filter(lat < 0)
+
+s <-
+  names(s_north) %>% 
+  map(function(i) {
+    
+    print(i)
+    
+    st_mosaic(
+      s_north %>% 
+        select(i),
+      s_south %>% 
+        select(i)
+    ) %>% 
+      setNames(i)
+    
+  }) %>% 
+  do.call(c, .)
+
+
+s[is.na(land)] <- NA_integer_
+"/mnt/bucket_mine/results/global_heat_pf/03_mosaicked/heat/v3/days-above-32C_v03.nc" %>% read_ncdf() -> a
+st_dimensions(s) <- st_dimensions(a)
+s <- st_set_dimensions(s, 3, values = seq(0.5, 3.0, 0.5))
+
+
+final_name <- "average-winter-temperature"
+vol <- "heat"
+
+file_name <- str_glue("/mnt/pers_disk/{final_name}_v03_cdf_v02.nc")
+
+fn_write_nc(s, file_name, "wl")
+
+"gsutil mv {file_name} gs://clim_data_reg_useast1/results/global_heat_pf/all-stats/{vol}" %>% 
+  str_glue() %>% 
+  system()
+
+c("/mnt/pers_disk/s_north.rds",
+  "/mnt/pers_disk/s_south.rds") %>% 
+  walk(fs::file_delete)
 

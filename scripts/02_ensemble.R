@@ -127,7 +127,7 @@ for(dom in doms){
       dir_derived %>% 
       list.files() %>% 
       str_subset(dom) %>% 
-      str_subset(derived_var)
+      str_subset(str_glue("_{derived_var}_"))
     
     
     # import files into a list
