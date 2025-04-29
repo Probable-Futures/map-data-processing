@@ -1,0 +1,716 @@
+---
+title: "Uncertainty analysis with ERA5"
+execute: 
+  echo: false
+  fig-width: 10
+  fig-height: 7
+format: 
+  revealjs:
+    self-contained: true
+    
+---
+
+```{r}
+#| label: setup
+#| include: false
+
+library(tidyverse)
+library(stars)
+
+sf_use_s2(F)
+
+dir_data <- "/mnt/pers_disk_300/dif_era_cordex"
+
+source(here::here("side_projs", "uncertainty_analysis", "0_output_vars.R")) 
+
+land_pol <- 
+  "/mnt/bucket_mine/misc_data/physical/ne_110m_land/" |> 
+  st_read(quiet = T)
+
+land_df <- 
+  land_pol %>% 
+  st_coordinates %>% 
+  as_tibble %>% 
+  mutate(L = paste0(L1, "_", L2))
+
+
+
+fn_plot <- function(stars_obj, revv, tit, subtit){
+  
+  # stars_obj = s
+  # revv = r
+  # tit = d
+  # subtit = dd
+  
+  
+  stars_obj <- suppressMessages(stars_obj[land_pol])
+  
+  un <- 
+    stars_obj |> 
+    pull() |> 
+    units::deparse_unit()
+  
+  tb <- 
+    stars_obj |>
+    units::drop_units() |> 
+    merge(name = "stats") |> 
+    setNames("value") |> 
+    as_tibble()
+  
+  lim <- max(abs(quantile(tb$value, c(0.5, 0.95), na.rm = T)))
+  
+  ggplot() +
+    geom_raster(data = tb, aes(lon, lat, fill = value)) + 
+    geom_path(data = land_df, aes(X, Y, group = L), linewidth = 0.25) +
+    colorspace::scale_fill_binned_diverging(na.value = "transparent",
+                                            n.breaks = 9,
+                                            guide = guide_colorsteps(barheight = 0.5,
+                                                                     barwidth = 24,
+                                                                     title.position = "left"),
+                                            name = un,
+                                            limits = c(-lim, lim),
+                                            rev = revv
+    ) +
+    facet_wrap(~stats, ncol = 2,dir = "v") +
+    coord_cartesian(ylim = c(-55, 75), xlim = c(-155, 160)) +
+    theme(axis.title = element_blank(),
+          legend.position = "bottom") +
+    labs(title = tit,
+         subtitle = subtit)
+  
+}
+
+
+
+
+
+
+fn_main <- function(nm, delta = F, revv = F, wl = NA) {
+  
+  # nm <- output_vars[1]
+  
+  if (delta & !is.na(wl)) {
+    
+    print("ERROR: delta maps don't have warming levels")
+    
+  } else {
+    
+    if (!delta) {
+      f <- str_glue("{dir_data}/era-cordex-dif_{str_replace_all(nm, '_', '-')}.nc")
+    } else {
+      f <- str_glue("{dir_data}/era-cordex-dif-delta_{str_replace_all(nm, '_', '-')}.nc")
+    }
+  
+  
+    s <- 
+      read_ncdf(f) |> 
+      suppressMessages()
+    
+    if(!is.na(wl)) {
+      
+      s <- 
+        s |> 
+        slice(wl, wl)
+      
+    }
+  
+    if (!delta & is.na(wl)){
+      
+      d <- "Difference: CORDEX - ERA5 [0.5° WL]"
+      
+    } else if (!delta & !is.na(wl)) {
+      
+      d <- str_glue("Difference: CORDEX - ERA5 [{c('0.5° WL', '1.0° WL')[wl]}]")
+      
+    } else if (delta) {
+      
+      d <- "Difference in change: CORDEX - ERA5 [1.0° - 0.5° WL]"
+      
+    }
+    
+  
+    dd <- 
+      nm |> 
+      str_replace_all("_", " ") |>  
+      str_to_sentence()
+    
+    if (!revv) {
+      r <- F
+    } else {
+      r <- T
+    }
+
+    fn_plot(s, r, d, dd)
+    
+  }
+  
+}
+
+
+```
+
+
+- Maps show CORDEX - ERA differences
+  - For heat maps, red (blue) means CORDEX runs hotter (cooler) than ERA5
+  - For water maps, red (blue) means CORDEX runs drier (wetter) than ERA5
+- Three difference maps per variable: 
+  - 0.5° WL
+  - 1.0° WL (not available for water maps)
+  -  Change (i.e. deltas) (1.0° - 0.5°)
+
+
+---
+
+```{r}
+
+fn_main(output_vars[1],
+        wl = 1)
+
+```
+
+---
+
+```{r}
+
+fn_main(output_vars[1],
+        wl = 2)
+
+```
+
+---
+
+
+```{r}
+
+fn_main(output_vars[1],
+        delta = T)
+
+```
+
+---
+
+```{r}
+
+fn_main(output_vars[2],
+        wl = 1)
+
+```
+
+---
+
+```{r}
+
+fn_main(output_vars[2],
+        wl = 2)
+
+```
+
+---
+
+```{r}
+
+fn_main(output_vars[2],
+        delta = T)
+
+```
+
+---
+
+
+```{r}
+
+fn_main(output_vars[3],
+        wl = 1)
+
+```
+
+---
+
+```{r}
+
+fn_main(output_vars[3],
+        wl = 2)
+
+```
+
+---
+
+```{r}
+
+fn_main(output_vars[3],
+        delta = T)
+
+```
+
+---
+
+
+```{r}
+
+fn_main(output_vars[4],
+        wl = 1)
+
+```
+
+---
+
+```{r}
+
+fn_main(output_vars[4],
+        wl = 2)
+
+```
+
+---
+
+```{r}
+
+fn_main(output_vars[4],
+        delta = T)
+
+```
+
+---
+
+
+```{r}
+
+fn_main(output_vars[5],
+        wl = 1)
+
+```
+
+---
+
+```{r}
+
+fn_main(output_vars[5],
+        wl = 2)
+
+```
+
+---
+
+```{r}
+
+fn_main(output_vars[5],
+        delta = T)
+
+```
+
+---
+
+
+```{r}
+
+fn_main(output_vars[6],
+        wl = 1)
+
+```
+
+---
+
+```{r}
+
+fn_main(output_vars[6],
+        wl = 2)
+
+```
+
+---
+
+```{r}
+
+fn_main(output_vars[6],
+        delta = T)
+
+```
+
+---
+
+
+```{r}
+
+fn_main(output_vars[7],
+        wl = 1)
+
+```
+
+---
+
+```{r}
+
+fn_main(output_vars[7],
+        wl = 2)
+
+```
+
+---
+
+```{r}
+
+fn_main(output_vars[7],
+        delta = T)
+
+```
+
+---
+
+
+```{r}
+
+fn_main(output_vars[8],
+        wl = 1)
+
+```
+
+---
+
+```{r}
+
+fn_main(output_vars[8],
+        wl = 2)
+
+```
+
+---
+
+```{r}
+
+fn_main(output_vars[8],
+        delta = T)
+
+```
+
+---
+
+
+```{r}
+
+fn_main(output_vars[9],
+        wl = 1)
+
+```
+
+---
+
+```{r}
+
+fn_main(output_vars[9],
+        wl = 2)
+
+```
+
+---
+
+```{r}
+
+fn_main(output_vars[9],
+        delta = T)
+
+```
+
+---
+
+
+```{r}
+
+fn_main(output_vars[10],
+        wl = 1)
+
+```
+
+---
+
+```{r}
+
+fn_main(output_vars[10],
+        wl = 2)
+
+```
+
+---
+
+```{r}
+
+fn_main(output_vars[10],
+        delta = T)
+
+```
+
+---
+
+```{r}
+
+fn_main(output_vars[11],
+        wl = 1)
+
+```
+
+---
+
+```{r}
+
+fn_main(output_vars[11],
+        wl = 2)
+
+```
+
+---
+
+```{r}
+
+fn_main(output_vars[11],
+        delta = T)
+
+```
+
+---
+
+
+```{r}
+
+fn_main(output_vars[12],
+        wl = 1)
+
+```
+
+---
+
+```{r}
+
+fn_main(output_vars[12],
+        wl = 2)
+
+```
+
+---
+
+```{r}
+
+fn_main(output_vars[12],
+        delta = T)
+
+```
+
+---
+
+
+```{r}
+
+fn_main(output_vars[13],
+        wl = 1)
+
+```
+
+---
+
+```{r}
+
+fn_main(output_vars[13],
+        wl = 2)
+
+```
+
+---
+
+```{r}
+
+fn_main(output_vars[13],
+        delta = T)
+
+```
+
+---
+
+
+```{r}
+
+fn_main(output_vars[14],
+        wl = 1)
+
+```
+
+---
+
+```{r}
+
+fn_main(output_vars[14],
+        wl = 2)
+
+```
+
+---
+
+```{r}
+
+fn_main(output_vars[14],
+        delta = T)
+
+```
+
+---
+
+
+```{r}
+
+fn_main(output_vars[15],
+        wl = 1)
+
+```
+
+---
+
+```{r}
+
+fn_main(output_vars[15],
+        wl = 2)
+
+```
+
+---
+
+```{r}
+
+fn_main(output_vars[15],
+        delta = T)
+
+```
+
+---
+
+
+```{r}
+
+fn_main(output_vars[16],
+        wl = 1)
+
+```
+
+---
+
+```{r}
+
+fn_main(output_vars[16],
+        wl = 2)
+
+```
+
+---
+
+```{r}
+
+fn_main(output_vars[16],
+        delta = T)
+
+```
+
+
+
+---
+
+### `{r} str_to_sentence(str_replace_all(output_vars[17], "_", " "))`
+- No maps: basically everywhere is zero
+
+---
+
+### `{r} str_to_sentence(str_replace_all(output_vars[18], "_", " "))`
+- No maps: basically everywhere is zero
+
+
+---
+
+```{r}
+
+fn_main(output_vars[19],
+        wl = 1)
+
+```
+
+---
+
+```{r}
+
+fn_main(output_vars[19],
+        wl = 2)
+
+```
+
+---
+
+```{r}
+
+fn_main(output_vars[19],
+        delta = T)
+
+```
+
+---
+
+```{r}
+
+fn_main(output_vars[20], revv = T)
+
+```
+
+---
+
+```{r}
+
+fn_main(output_vars[20], revv = T, delta = T)
+
+```
+
+---
+
+```{r}
+
+fn_main(output_vars[21], revv = T)
+
+```
+
+---
+
+```{r}
+
+fn_main(output_vars[21], revv = T, delta = T)
+
+```
+
+---
+
+```{r}
+
+fn_main(output_vars[22], revv = T)
+
+```
+
+---
+
+```{r}
+
+fn_main(output_vars[22], revv = T, delta = T)
+
+```
+
+---
+
+```{r}
+
+fn_main(output_vars[23], revv = T)
+
+```
+
+---
+
+```{r}
+
+fn_main(output_vars[23], revv = T, delta = T)
+
+```
+
+
+
+
+
+
