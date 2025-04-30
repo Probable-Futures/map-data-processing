@@ -2,7 +2,6 @@
 # system("sudo mount -o discard,defaults /dev/sdc /mnt/pers_disk_300/")
 
 
-
 library(tidyverse)
 library(stars)
 library(furrr)
@@ -15,20 +14,33 @@ plan(multicore)
 source("https://raw.github.com/carlosdobler/spatial-routines/master/general_tools.R")
 source("https://raw.github.com/carlosdobler/spatial-routines/master/tile.R")
 
+source("side_projs/uncertainty_analysis/0_output_vars.R")
+source("side_projs/uncertainty_analysis/var_info_list.R")
+source("side_projs/uncertainty_analysis/fn_derived.R")
+
+
 
 dir_rawdata <- "/mnt/pers_disk_300/rawdata"
 dir_tiles <- "/mnt/pers_disk_300/tiles"
 dir_res <- "/mnt/pers_disk_300/results"
 
-
+fs::dir_create(dir_rawdata)
+fs::dir_create(dir_tiles)
 fs::dir_create(dir_res)
 
 
 
 # get all file names
+
+input_vars_all <- 
+  var_info_list[output_vars] |> 
+  map(pluck, "input_vars") |>
+  unname() |> 
+  unlist()
+
 input_vars <- 
-  list("total_precipitation", "2m_temperature", "2m_maximum_temperature") |> 
-  set_names(c("precip", "tas", "tasmax"))
+  unique(names(input_vars_all)) |> 
+  set_names(unique(input_vars_all))
 
 ff <- 
   map(input_vars, \(v) rt_gs_list_files(str_glue("gs://clim_data_reg_useast1/era5/daily_aggregates/{v}")))
@@ -100,46 +112,38 @@ ff_sub <-
   map(\(f) str_subset(f, str_flatten(yrs, "|")))
 
 # download all files
+ff_sub <-
+  ff_sub |>
+  map(\(f) rt_gs_download_files(f, dir_rawdata))
+
 # ff_sub <-
-#   ff_sub |> 
-#   map(\(f) rt_gs_download_files(f, dir_rawdata))
-ff_sub <- 
-  ff_sub |> 
-  map(\(ff) str_glue("{dir_rawdata}/{fs::path_file(ff)}"))
+#   ff_sub |>
+#   map(\(ff) str_glue("{dir_rawdata}/{fs::path_file(ff)}"))
 
 
-
-
-output_vars <- 
-  c("total_annual_precipitation",
-    "wettest_90_days",
-    "snowy_days",
-    "dry_hot_days")
-
-output_vars_units <- 
-  c("mm",
-    "mm",
-    "d",
-    "d")
 
 
 output_vars |> 
-  walk(\(d) fs::dir_create(str_glue("{dir_tiles}/{d}")))
-
-
-
-source("side_projs/uncertainty_analysis/fn_derived.R")
+  walk(\(dir_v) fs::dir_create(str_glue("{dir_tiles}/{dir_v}")))
 
 
 
 # loop through tiles
 pwalk(df_tiles_land, function(tile_id, start_x, start_y, count_x, count_y, ...){
   
+  # arctic
   # tile_id = "071"
   # start_x = 249
   # count_x = 49
   # start_y = 1
   # count_y = 51
+  
+  # colombia
+  # tile_id = "330"
+  # start_x = 1143
+  # count_x = 49
+  # start_y = 361
+  # count_y = 52
   
   print(str_glue("importing {tile_id}"))
   
@@ -163,10 +167,17 @@ pwalk(df_tiles_land, function(tile_id, start_x, start_y, count_x, count_y, ...){
 })
 
 
+
 # ********
 
 
 # mosaic 
+
+output_vars_units <- 
+  var_info_list[output_vars] |> 
+  map(pluck, "units") |>
+  unname() |> 
+  unlist()
 
 
 
@@ -181,7 +192,7 @@ walk2(output_vars, output_vars_units, \(ov, ov_un) {
     tail(-1) |> 
     head(-1) |> 
     
-    walk(\(yr) { # future
+    walk(\(yr) { # future?
       
       print(yr)
       
@@ -217,6 +228,8 @@ walk2(output_vars, output_vars_units, \(ov, ov_un) {
 
 # clean up
 
-
+fs::dir_delete(dir_rawdata)
+fs::dir_delete(dir_tiles)
+fs::dir_delete(dir_res)
 
 

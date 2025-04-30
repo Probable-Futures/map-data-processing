@@ -808,7 +808,7 @@ s <- st_set_dimensions(s, 3, values = seq(0.5, 3.0, 0.5))
 
 
 fn_write_nc(s %>% st_set_dimensions(3, values = seq(0.5, 3.0, 0.5)),
-            "/mnt/bucket_mine/results/misc/winter_temps_pf/global_avg_winter_tas.nc",
+            "/mnt/bucket_mine/results/misc/winter_temps_pf/average-winter-temperature.nc",
             "wl")
 
 

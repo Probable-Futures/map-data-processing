@@ -3,6 +3,281 @@ fun_list <-
   
   list(
     
+    days_above_32c = function(s) {
+      
+      s$tasmax |> 
+        mutate(days = if_else(t2m >= units::set_units(32, degC), 1L, 0L)) |> 
+        select(days) |> 
+        aggregate(sum, by = "1 year") |> 
+        aperm(c(2,3,1))
+      
+    },
+    
+    
+    # ****
+    
+    
+    days_above_35c = function(s) {
+      
+      s$tasmax |> 
+        mutate(days = if_else(t2m >= units::set_units(35, degC), 1L, 0L)) |> 
+        select(days) |> 
+        aggregate(sum, by = "1 year") |> 
+        aperm(c(2,3,1))
+      
+    },
+    
+    
+    # ****
+    
+    
+    days_above_38c = function(s) {
+      
+      s$tasmax |> 
+        mutate(days = if_else(t2m >= units::set_units(38, degC), 1L, 0L)) |> 
+        select(days) |> 
+        aggregate(sum, by = "1 year") |> 
+        aperm(c(2,3,1))
+      
+    },
+    
+    
+    # ****
+    
+    
+    days_above_45c = function(s) {
+      
+      s$tasmax |> 
+        mutate(days = if_else(t2m >= units::set_units(45, degC), 1L, 0L)) |> 
+        select(days) |> 
+        aggregate(sum, by = "1 year") |> 
+        aperm(c(2,3,1))
+      
+    },
+    
+    
+    # ****
+    
+    
+    average_temperature = function(s) {
+      
+      s$tas |> 
+        aggregate(mean, by = "1 year") |> 
+        aperm(c(2,3,1))
+      
+    },
+    
+    
+    # ****
+      
+      
+    average_daytime_temperature = function(s) {
+      
+      s$tasmax |> 
+        aggregate(mean, by = "1 year") |> 
+        aperm(c(2,3,1))
+      
+    },
+    
+    
+    # ****
+    
+    
+    ten_hottest_days = function(s) {
+      
+      s$tasmax |> 
+        aggregate(\(x) x |> sort() |> tail(10) |> mean(), 
+                  by = "1 year") |> 
+        aperm(c(2,3,1))
+      
+    },
+    
+    
+    # ****
+    
+    
+    freezing_days = function(s) {
+      
+      s$tasmax |> 
+        mutate(days = if_else(t2m < units::set_units(0, degC), 1L, 0L)) |> 
+        select(days) |> 
+        aggregate(sum, by = "1 year") |> 
+        aperm(c(2,3,1))
+        
+    },
+    
+    
+    # ****
+    
+    
+    frost_nights = function(s) {
+      
+      s$tasmin |> 
+        mutate(days = if_else(t2m < units::set_units(0, degC), 1L, 0L)) |> 
+        select(days) |> 
+        aggregate(sum, by = "1 year") |> 
+        aperm(c(2,3,1))
+      
+    },
+    
+    
+    # ****
+    
+    
+    nights_above_20c = function(s) {
+      
+      s$tasmin |> 
+        mutate(days = if_else(t2m >= units::set_units(20, degC), 1L, 0L)) |> 
+        select(days) |> 
+        aggregate(sum, by = "1 year") |> 
+        aperm(c(2,3,1))
+      
+    },
+    
+    
+    # ****
+    
+    
+    nights_above_25c = function(s) {
+      
+      s$tasmin |> 
+        mutate(days = if_else(t2m >= units::set_units(25, degC), 1L, 0L)) |> 
+        select(days) |> 
+        aggregate(sum, by = "1 year") |> 
+        aperm(c(2,3,1))
+      
+    },
+    
+    
+    # ****
+    
+    
+    average_nighttime_temperature = function(s) {
+      
+      s$tasmin |> 
+        aggregate(mean, by = "1 year") |> 
+        aperm(c(2,3,1))
+      
+    },
+    
+    
+    # ****
+    
+    
+    average_winter_temperature = function(s) {
+      
+      ss <- 
+        c(s$tas,
+          s$tas |> 
+            st_dim_to_attr(2))
+      
+      s_north <-
+        ss |> 
+        filter(month(time) %in% c(12,1,2)) |> 
+        mutate(n = if_else(latitude >= 0, t2m, NA)) |> 
+        select(n) |> 
+        aggregate(by = "1 year", mean) |> 
+        aperm(c(2,3,1))
+      
+      s_south <-
+        ss |> 
+        filter(month(time) %in% c(6,7,8)) |> 
+        mutate(s = if_else(latitude < 0, t2m, NA)) |> 
+        select(s) |> 
+        aggregate(by = "1 year", mean) |> 
+        aperm(c(2,3,1))
+      
+      c(s_north, s_south, along = "hemi") |>
+        st_apply(c(1,2,3), sum, na.rm = T, .fname = "t2m")
+      
+    },
+    
+    
+    # ****
+    
+    
+    ten_hottest_nights  = function(s) {
+      
+      s$tasmin |> 
+        aggregate(\(x) x |> sort() |> tail(10) |> mean(), 
+                  by = "1 year") |> 
+        aperm(c(2,3,1))
+      
+    },
+    
+    
+    # ****
+    
+    
+    days_above_26c_wb = function(s) {
+      
+      s$wb |> 
+        mutate(days = if_else(wb >= units::set_units(26, degC), 1L, 0L)) |> 
+        select(days) |> 
+        aggregate(sum, by = "1 year") |> 
+        aperm(c(2,3,1))
+      
+    },
+    
+    
+    # ****
+    
+    
+    days_above_28c_wb = function(s) {
+      
+      s$wb |> 
+        mutate(days = if_else(wb >= units::set_units(28, degC), 1L, 0L)) |> 
+        select(days) |> 
+        aggregate(sum, by = "1 year") |> 
+        aperm(c(2,3,1))
+      
+    },
+    
+    
+    # ****
+    
+    
+    days_above_30c_wb = function(s) {
+      
+      s$wb |> 
+        mutate(days = if_else(wb >= units::set_units(30, degC), 1L, 0L)) |> 
+        select(days) |> 
+        aggregate(sum, by = "1 year") |> 
+        aperm(c(2,3,1))
+      
+    },
+    
+    
+    # ****
+    
+    
+    days_above_32c_wb = function(s) {
+      
+      s$wb |> 
+        mutate(days = if_else(wb >= units::set_units(32, degC), 1L, 0L)) |> 
+        select(days) |> 
+        aggregate(sum, by = "1 year") |> 
+        aperm(c(2,3,1))
+      
+    },
+    
+    
+    # ****
+    
+    
+    ten_hottest_wb_days  = function(s) {
+      
+      s$wb |> 
+        aggregate(\(x) x |> sort() |> tail(10) |> mean(), 
+                  by = "1 year") |> 
+        aperm(c(2,3,1))
+      
+    },
+    
+    
+    # ****
+    
+    
     total_annual_precipitation = function(s) {
         
         time_dim <- 
