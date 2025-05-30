@@ -23,7 +23,8 @@ output_vars <-
     "total_annual_precipitation", # 20
     "snowy_days", # 21
     "dry_hot_days", # 22
-    "wettest_90_days" # 23
-  )
+    "wettest_90_days", # 23
+    "wettest_day" # 24
+  )[c(24)]
 
 

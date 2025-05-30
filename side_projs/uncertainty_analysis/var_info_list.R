@@ -89,6 +89,10 @@ var_info_list <-
                               input_vars = "precip" |> 
                                 set_names("total_precipitation")),
        
+       wettest_day = list(units = "mm",
+                          input_vars = "precip" |> 
+                            set_names("total_precipitation")),
+       
        snowy_days = list(units = "d",
                          input_vars = c("precip", "tas") |> 
                            set_names(c("total_precipitation", "2m_temperature"))),

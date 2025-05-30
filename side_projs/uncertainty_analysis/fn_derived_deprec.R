@@ -282,28 +282,20 @@ fun_list <-
         
         time_dim <- 
           s$precip |> 
-          st_get_dimension_values(3)
-        
-        year_vector <-
-          time_dim |> 
-          str_sub(end = 4) |> 
-          as.numeric()
-        
-        year_vector_unique <- 
-          year_vector |> 
-          unique()
-        
+          st_get_dimension_values(3) |> 
+          as_date()
         
         s$precip |>
+          mutate(tp = tp |> units::set_units(mm/d)) |> 
           st_apply(c(1,2), \(x){
             
             if (all(is.na(x))){
               
-              rep(NA, length(year_vector_unique))
+              rep(NA, length(yrs))
               
             } else {
               
-              aggregate(x, by = list(year_vector), FUN = sum)$x
+              aggregate(x, by = list(year(time_dim)), FUN = sum)$x
               
             }
             
@@ -311,8 +303,8 @@ fun_list <-
           FUTURE = T,
           .fname = "time") |> 
           aperm(c(2,3,1)) |> 
-          st_set_dimensions(3, values = seq(paste0(first(year_vector),"-01-01") |> as_date(),
-                                            paste0(last(year_vector), "-01-01") |> as_date(),
+          st_set_dimensions(3, values = seq(as_date(paste0(first(yrs),"-01-01")),
+                                            as_date(paste0(last(yrs),"-01-01")),
                                             by = "1 year"))
         
       },
@@ -325,45 +317,39 @@ fun_list <-
       
       time_dim <- 
         s$precip |> 
-        st_get_dimension_values(3)
-      
-      year_vector <-
-        time_dim |> 
-        str_sub(end = 4) |> 
-        as.numeric()
-      
-      year_vector_unique <- 
-        year_vector |> 
-        unique()
+        st_get_dimension_values(3) |> 
+        as_date()
       
       s$precip |>
+        # mutate(tp = tp |> units::set_units(mm/d)) |> 
         st_apply(c(1,2), \(x){
           
           if (all(is.na(x))){
             
-            rep(NA, length(year_vector_unique))
+            rep(NA, length(yrs))                                                       # <- AGHHHHH
             
           } else {
             
             # running sum
             runsum <- 
               x %>%
-              slider::slide_dbl(.f = sum,
-                                .before = 89,
-                                .complete = T,
+              # units::set_units(mm/d) |> 
+              # units::drop_units() |> 
+              slider::slide_dbl(.f = sum, 
+                                .before = 89, 
+                                .complete = T, 
                                 .step = 2)
-              
+            
             # initialize results vector
-            pr <- rep(NA_real_, length(year_vector_unique))
+            pr <- rep(NA_real_, length(yrs))
             
             # initial previous max position
             prev_max_pos <- -90
             
             # loop through years
-            for(i in seq_along(year_vector_unique)){
+            for(i in seq_along(yrs)){
               
-              # year_positions <- which(year(time_dim) == yrs[i])
-              year_positions <- which(year_vector == year_vector_unique[i])
+              year_positions <- which(year(time_dim) == yrs[i])
               
               # avoid window overlap:
               # shorten the valid range of dates if the previous max happened
@@ -376,7 +362,7 @@ fun_list <-
               max_pos <- valid_range[which.max(runsum[valid_range])]
               
               # update results vector
-              pr[i] <- runsum[max_pos]
+              pr[i] <- runsum[max_pos]                        # AGHHHHHHHHHHHHH!!!!!!
               
               # update previous max position
               prev_max_pos <- max_pos
@@ -391,11 +377,10 @@ fun_list <-
         FUTURE = T,
         .fname = "time") |>
         aperm(c(2,3,1)) |> 
-        st_set_dimensions(3, 
-                          values = seq(paste0(first(year_vector),"-01-01") |> as_date(),
-                                       paste0(last(year_vector), "-01-01") |> as_date(),
-                                       by = "1 year")
-                          )
+        st_set_dimensions(3, values = seq(as_date(paste0(first(yrs),"-01-01")),
+                                          as_date(paste0(last(yrs),"-01-01")),
+                                          by = "1 year"))
+      
     },
     
     
@@ -456,20 +441,8 @@ fun_list <-
                                           as_date(paste0(last(yrs),"-01-01")),
                                           by = "1 year"))
       
-    },
-    
-    
-    # *****
-    
-    
-    wettest_day = function(s) {
-      
-      s$precip |> 
-        aggregate(max, by = "1 year") |> 
-        aperm(c(2,3,1))
-      
-      
     }
+    
     
     
   )
