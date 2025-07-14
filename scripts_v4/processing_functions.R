@@ -62,12 +62,16 @@ prepare_tile <- function(start_x, start_y, count_x, count_y){
       v <- names(s)
       
       if(un == "kg m-2 s-1") {
-        s |> 
+        s <- 
+          s |> 
           mutate(!!sym(v) := units::set_units(!!sym(v), kg/m^2/d))
       } else if(un == "m d-1") {
-        s |> 
+        s <- 
+          s |> 
           mutate(!!sym(v) := units::set_units(!!sym(v), mm/d))
       }
+      
+      return(s)
       
     })
   
@@ -81,18 +85,38 @@ mosaic <- function(output_var, output_var_unit, years, prefix, dir_dest_cloud) {
   
   message(str_glue("    mosaicking var {which(output_var == output_vars)} / {length(output_vars)} ({output_var})"))
   
+  ff_tiles <- 
+    str_glue("{dir_tiles}/{output_var}") |>
+    fs::dir_ls() |> 
+    str_subset("tile_[:digit:]{3}.nc")
+  
+  full_time_vector <- 
+    ff_tiles |> 
+    first() |> 
+    read_ncdf(proxy = F) |> 
+    suppressMessages() |> 
+    st_get_dimension_values("time")
+  
+  
   # loop yrs
   years |> 
     walk(\(yr) { # future?
       
       message(str_glue("      {yr}"))
       
+      # mos <- 
+      #   rt_tile_mosaic(df_tiles = df_tiles, 
+      #                  dir_tiles = str_glue("{dir_tiles}/{output_var}"), 
+      #                  spatial_dims = st_dimensions(s_proxy), 
+      #                  time_dim = as_date(str_glue("{yr}-01-01"))) |> 
+      #   adrop()
+      
       mos <- 
-        rt_tile_mosaic(df_tiles = df_tiles, 
-                       dir_tiles = str_glue("{dir_tiles}/{output_var}"), 
-                       spatial_dims = st_dimensions(s_proxy), 
-                       time_dim = as_date(str_glue("{yr}-01-01"))) |> 
-        adrop()
+        rt_tile_mosaic_gdal(ff_tiles,
+                            dir_res,
+                            spatial_dims = st_dimensions(s_proxy),
+                            time_dim = as_date(str_glue("{yr}-01-01")),
+                            time_full = full_time_vector)
       
       mos <- 
         mos |> 
@@ -112,4 +136,51 @@ mosaic <- function(output_var, output_var_unit, years, prefix, dir_dest_cloud) {
       
     })
   
+}
+
+
+fix_coords <- function(s){
+  
+  dim_1 <- st_get_dimension_values(s, 1)
+  dim_2 <- st_get_dimension_values(s, 2)
+  
+  s <- 
+    s |> 
+    st_set_dimensions(1, values = seq(round(first(dim_1),1), round(last(dim_1),1)-0.2, length.out = length(dim_1))) |> 
+    st_set_dimensions(2, values = seq(round(first(dim_2),1), round(last(dim_2),1)-0.2, length.out = length(dim_2))) |> 
+    st_set_crs(4326) |> 
+    suppressWarnings()
+  
+  return(s)
+}
+
+
+calc_stats_wl <- function(s, un){
+  
+  s |> 
+    st_apply(c(1,2), \(x){
+      
+      if (any(is.na(x))) {
+        
+        r <- rep(NA, 8)
+        
+      } else {
+        
+        r <- 
+          c(mean(x),
+            quantile(x, c(0, 0.05, 0.25, 0.5, 0.75, 0.95, 1))
+          )
+        
+      }
+      
+      r |> 
+        set_names(c("mean", 
+                    str_glue("perc_{c(0, 5, 25, 50, 75, 95, 100)}")))
+      
+    },
+    FUTURE = T,
+    .fname = "stats") |> 
+    setNames("a") |> 
+    mutate(a = units::set_units(a, !!sym(un))) |> 
+    split("stats")
 }

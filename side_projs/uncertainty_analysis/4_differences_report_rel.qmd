@@ -1,0 +1,384 @@
+---
+title: "Uncertainty analysis with ERA5 (Water volume)"
+execute: 
+  echo: false
+  fig-width: 10
+  fig-height: 7
+format: 
+  revealjs:
+    self-contained: true
+    
+---
+
+```{r}
+#| label: setup
+#| include: false
+
+library(tidyverse)
+library(stars)
+
+sf_use_s2(F)
+
+dir_data <- "/mnt/pers_disk_300/dif_era_cordex"
+
+source(here::here("scripts_v4", "0_output_vars.R")) 
+
+land_pol <- 
+  "/mnt/bucket_mine/misc_data/physical/ne_110m_land/" |> 
+  st_read(quiet = T)
+
+land_df <- 
+  land_pol %>% 
+  st_coordinates %>% 
+  as_tibble %>% 
+  mutate(L = paste0(L1, "_", L2))
+
+
+
+fn_plot <- function(stars_obj, revv, tit, subtit, dif_type){
+  
+  # stars_obj = s
+  # revv = r
+  # tit = d
+  # subtit = dd
+
+  
+  stars_obj <- suppressMessages(stars_obj[land_pol])
+  
+  
+  
+  tb <- 
+    stars_obj |>
+    units::drop_units() |> 
+    merge(name = "stats") |> 
+    setNames("value") |> 
+    as_tibble()
+  
+  
+  if (dif_type == "abs"){
+    
+    un <- 
+      stars_obj |> 
+      pull() |> 
+      units::deparse_unit()
+  
+    lim <- max(abs(quantile(tb$value, c(0.05, 0.95), na.rm = T)))
+    
+    ggplot() +
+      geom_raster(data = tb, aes(lon, lat, fill = value)) + 
+      geom_path(data = land_df, aes(X, Y, group = L), linewidth = 0.25) +
+      facet_wrap(~stats, ncol = 2,dir = "v") +
+      coord_cartesian(ylim = c(-55, 75), xlim = c(-155, 160)) +
+      theme(axis.title = element_blank(),
+            legend.position = "bottom") +
+      labs(title = tit,
+           subtitle = subtit) +
+      colorspace::scale_fill_binned_diverging(na.value = "transparent",
+                                              n.breaks = 9,
+                                              guide = guide_colorsteps(barheight = 0.5,
+                                                                       barwidth = 24,
+                                                                       title.position = "left"),
+                                              name = un,
+                                              limits = c(-lim, lim),
+                                              oob = scales::squish,
+                                              rev = revv)
+    
+  } else {
+    
+    tb_log <- 
+      tb |> 
+      mutate(value = log(value))
+    
+    limss <- quantile(tb_log$value, c(0.05, 0.95), na.rm = T) |> round(1)
+    
+    ggplot() +
+      geom_raster(data = tb_log, aes(lon, lat, fill = value)) + 
+      geom_path(data = land_df, aes(X, Y, group = L), linewidth = 0.25) +
+      facet_wrap(~stats, ncol = 2,dir = "v") +
+      coord_cartesian(ylim = c(-55, 75), xlim = c(-155, 160)) +
+      theme(axis.title = element_blank(),
+            legend.position = "bottom") +
+      labs(title = tit,
+           subtitle = subtit) +
+      colorspace::scale_fill_binned_diverging(na.value = "transparent",
+                                              # n.breaks = 9,
+                                              guide = guide_colorsteps(barheight = 0.5,
+                                                                       barwidth = 24,
+                                                                       title.position = "left"),
+                                              name = "X   ",
+                                              breaks = seq(first(limss), last(limss), 0.2),
+                                              labels = exp(seq(first(limss), last(limss), 0.2)) |> round(1),
+                                              limits = c(first(limss), last(limss)),
+                                              oob = scales::squish,
+                                              rev = revv)
+    
+    
+    
+  }
+  
+}
+
+
+
+
+
+
+fn_main <- function(nm, abs = T, revv = F, wl = NA) {
+  
+  # nm <- output_vars[24]
+  # # delta = T no more delta
+  # abs = F
+  # revv = T
+  # wl = 1
+  
+  
+  if(abs){
+    dif_type = "abs"
+  } else {
+    dif_type = "rel"
+  }
+  
+  
+  f <- str_glue("{dir_data}/era-cordex-dif_{dif_type}_{str_replace_all(nm, '_', '-')}.nc")
+  
+  s <- 
+    read_ncdf(f) |> 
+    suppressMessages()
+  
+  s <- 
+    s |> 
+    slice(wl, wl)
+  
+  if(dif_type == "abs"){
+    
+    d <- str_glue("Absolute difference: CORDEX - ERA5 [{c('0.5° WL', '1.0° WL')[wl]}]")
+    
+  } else {
+    
+    d <- str_glue("Relative difference: CORDEX / ERA5 [{c('0.5° WL', '1.0° WL')[wl]}]")
+    
+  }
+  
+  
+  dd <- 
+    nm |> 
+    str_replace_all("_", " ") |>  
+    str_replace_all("-", " ") |>
+    str_to_sentence()
+  
+  if (!revv) {
+    r <- F
+  } else {
+    r <- T
+  }
+
+  fn_plot(s, r, d, dd, dif_type)
+   
+  
+}
+
+
+```
+
+
+- Maps show CORDEX vs. ERA differences
+  - Red (blue) means CORDEX runs drier (wetter) than ERA5
+- Four difference maps per variable: 
+  - Two warming levels (0.5° and  1.0°)...
+  - ...absolute and relative differences for each.
+
+
+---
+
+```{r}
+
+fn_main(output_vars[20], wl = 1, revv = T, abs = T)
+
+```
+
+---
+
+```{r}
+
+fn_main(output_vars[20], wl = 1, revv = T, abs = F)
+
+```
+
+---
+
+```{r}
+
+fn_main(output_vars[20], wl = 2, revv = T, abs = T)
+
+```
+
+---
+
+```{r}
+
+fn_main(output_vars[20], wl = 2, revv = T, abs = F)
+
+```
+
+---
+
+```{r}
+
+fn_main(output_vars[21], wl = 1, revv = T, abs = T)
+
+```
+
+---
+
+```{r}
+
+fn_main(output_vars[21], wl = 1, revv = T, abs = F)
+
+```
+
+---
+
+```{r}
+
+fn_main(output_vars[21], wl = 2, revv = T, abs = T)
+
+```
+
+---
+
+```{r}
+
+fn_main(output_vars[21], wl = 2, revv = T, abs = F)
+
+```
+
+---
+
+```{r}
+
+fn_main(output_vars[22], wl = 1, revv = T, abs = T)
+
+```
+
+---
+
+```{r}
+
+fn_main(output_vars[22], wl = 1, revv = T, abs = F)
+
+```
+
+---
+
+```{r}
+
+fn_main(output_vars[22], wl = 2, revv = T, abs = T)
+
+```
+
+---
+
+```{r}
+
+fn_main(output_vars[22], wl = 2, revv = T, abs = F)
+
+```
+
+---
+
+```{r}
+
+fn_main(output_vars[23], wl = 1, revv = T, abs = T)
+
+```
+
+---
+
+```{r}
+
+fn_main(output_vars[23], wl = 1, revv = T, abs = F)
+
+```
+
+---
+
+```{r}
+
+fn_main(output_vars[23], wl = 2, revv = T, abs = T)
+
+```
+
+---
+
+```{r}
+
+fn_main(output_vars[23], wl = 2, revv = T, abs = F)
+
+```
+
+---
+
+```{r}
+
+fn_main(output_vars[24], wl = 1, revv = T, abs = T)
+
+```
+
+---
+
+```{r}
+
+fn_main(output_vars[24], wl = 1, revv = T, abs = F)
+
+```
+
+---
+
+```{r}
+
+fn_main(output_vars[24], wl = 2, revv = T, abs = T)
+
+```
+
+---
+
+```{r}
+
+fn_main(output_vars[24], wl = 2, revv = T, abs = F)
+
+```
+
+---
+
+```{r}
+
+fn_main("max-wettest-day", wl = 1, revv = T, abs = T)
+
+```
+
+---
+
+```{r}
+
+fn_main("max-wettest-day", wl = 1, revv = T, abs = F)
+
+```
+
+---
+
+```{r}
+
+fn_main("max-wettest-day", wl = 2, revv = T, abs = T)
+
+```
+
+---
+
+```{r}
+
+fn_main("max-wettest-day", wl = 2, revv = T, abs = F)
+
+```
+
+
+

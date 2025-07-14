@@ -136,6 +136,7 @@ rt_tile_load <- function(start_x, start_y, count_x, count_y, list_files, paralle
     future_map(\(f){
       
       read_ncdf(f,
+                ignore_bounds = T,
                 ncsub = cbind(start = c(start_x,
                                         start_y,
                                         1),
@@ -148,9 +149,24 @@ rt_tile_load <- function(start_x, start_y, count_x, count_y, list_files, paralle
     suppressMessages() |>
     do.call(c, args = _)
   
+  # if (grid_360) {
+  # 
+  #   lon <- st_get_dimension_values(s_tile, 1, center = F)
+  # 
+  #   if (any(lon < 0)) {
+  # 
+  #     lon[lon < 0] <- lon[lon < 0] + 360
+  #     s_tile <-
+  #       s_tile |>
+  #       st_set_dimensions(1, values = lon)
+  # 
+  #   }
+  # }
+  
   return(s_tile)
   
 }
+
 
 
 # *****
@@ -388,4 +404,89 @@ rt_tile_mosaic <- function(df_tiles, dir_tiles, spatial_dims, time_dim = NULL) {
   return(mos)
   
 }
+
+
+
+
+# *****
+
+#'@export
+rt_tile_mosaic_gdal <- function(tile_files, dir_res, spatial_dims = NULL, time_dim = NULL, time_full = NULL) {
+  
+  box::use(stars[...],
+           sf[...],
+           dplyr[...],
+           purrr[...],
+           future[...],
+           furrr[...],
+           stringr[...])
+  
+  if (!is.null(time_dim)) {
+    
+    # identify positions of time range in relation to full time vector
+    time_pos <-
+      c(which(time_full == first(time_dim)),
+        which(time_full == last(time_dim)))
+    
+    # subset tile files
+    # update paths
+    
+    dir_tiles_sub <- str_glue("{dir_res}/tiles")
+    fs::dir_create(dir_tiles_sub)
+    
+    tile_files <- 
+      future_map(tile_files, \(f){
+        
+        new_f <- 
+          str_glue("{dir_tiles_sub}/{f |> fs::path_file() |> fs::path_ext_remove()}.tif")
+        
+        read_ncdf(f,
+                  ncsub = cbind(start = c(1, 1, time_pos[1]),
+                                count = c(NA,NA,time_pos[2]-time_pos[1]+1))) |> 
+          suppressMessages() |> 
+          write_stars(new_f)
+        
+        return(new_f)
+        
+      }) |> 
+      unlist()
+    
+  }
+  
+  
+  # mosaic with gdalwarp
+  dir_mos <- str_glue("{dir_res}/mos")
+  fs::dir_create(dir_mos)
+  
+  f_res <- 
+    str_glue("{dir_mos}/mos.tif")
+  
+  gdal_utils(
+    "warp",
+    source = tile_files,
+    destination = f_res,
+    options = c("-dstnodata", "-9999")
+  )
+  
+  s <- 
+    f_res |> 
+    read_stars()
+  
+  if (!is.null(spatial_dims)) {
+    
+    s_ref <- 
+      st_as_stars(dimensions = spatial_dims)
+    
+    s <- 
+      st_warp(s, s_ref)
+    
+  }
+  
+  fs::dir_delete(dir_mos)
+  if (fs::dir_exists(dir_tiles_sub)) fs::dir_delete(dir_tiles_sub)
+  
+  return(s)
+  
+}
+
 
