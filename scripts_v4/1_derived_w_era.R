@@ -6,8 +6,8 @@ library(tidyverse)
 library(stars)
 library(furrr)
 library(PCICt)
-box::use(../functions/general_tools[...],
-         ../functions/tile[...])
+box::use(functions/general_tools[...],
+         functions/tile[...])
 
 options(future.fork.enable = T,
         future.rng.onMisuse = "ignore")
