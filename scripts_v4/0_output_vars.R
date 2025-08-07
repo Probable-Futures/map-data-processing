@@ -25,6 +25,6 @@ output_vars <-
     "dry_hot_days", # 22
     "wettest_90_days", # 23
     "wettest_day" # 24
-  )[c(20, 23)]
+  )
 
 

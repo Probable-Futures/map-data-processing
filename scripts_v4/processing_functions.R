@@ -47,7 +47,22 @@ prepare_tile <- function(start_x, start_y, count_x, count_y){
   # load all data within the tile
   s_tile <-
     ff_sub |> 
-    map(\(f) rt_tile_load(start_x, start_y, count_x, count_y, f, parallel = T))
+    imap(in_parallel(\(f, i) {
+      
+      # tictoc::tic(str_glue("       imported {i}"))
+      s <- rt_tile_load(start_x, start_y, count_x, count_y, f)
+      # tictoc::toc()
+      return(s)
+    
+    },
+    rt_tile_load = rt_tile_load,
+    start_x = start_x,
+    start_y = start_y,
+    count_x = count_x,
+    count_y = count_y
+    )) |> 
+    # rename
+    imap(\(s, i) s |> setNames(i))
   
   # convert units
   s_tile <- 
@@ -145,9 +160,16 @@ fix_coords <- function(s){
   dim_2 <- st_get_dimension_values(s, 2)
   
   s <- 
-    s |> 
-    st_set_dimensions(1, values = seq(round(first(dim_1),1), round(last(dim_1),1)-0.2, length.out = length(dim_1))) |> 
-    st_set_dimensions(2, values = seq(round(first(dim_2),1), round(last(dim_2),1)-0.2, length.out = length(dim_2))) |> 
+    s |>
+
+    st_set_dimensions(
+      1,
+      values = seq(round(first(dim_1)-0.1, 1), round(last(dim_1)-0.1, 1), length.out = length(dim_1))
+    ) |>
+    st_set_dimensions(
+      2,
+      values = seq(round(first(dim_2)-0.1, 1), round(last(dim_2)-0.1, 1), length.out = length(dim_2))
+    ) |>
     st_set_crs(4326) |> 
     suppressWarnings()
   

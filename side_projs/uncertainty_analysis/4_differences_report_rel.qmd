@@ -19,7 +19,7 @@ library(stars)
 
 sf_use_s2(F)
 
-dir_data <- "/mnt/pers_disk_300/dif_era_cordex"
+dir_data <- "/mnt/pers_disk/dif_era_cordex/dif"
 
 source(here::here("scripts_v4", "0_output_vars.R")) 
 
@@ -45,8 +45,6 @@ fn_plot <- function(stars_obj, revv, tit, subtit, dif_type){
   
   stars_obj <- suppressMessages(stars_obj[land_pol])
   
-  
-  
   tb <- 
     stars_obj |>
     units::drop_units() |> 
@@ -61,10 +59,13 @@ fn_plot <- function(stars_obj, revv, tit, subtit, dif_type){
       stars_obj |> 
       pull() |> 
       units::deparse_unit()
+
+
   
     lim <- max(abs(quantile(tb$value, c(0.05, 0.95), na.rm = T)))
-    
-    ggplot() +
+
+    p_nonlog <- 
+      ggplot() +
       geom_raster(data = tb, aes(lon, lat, fill = value)) + 
       geom_path(data = land_df, aes(X, Y, group = L), linewidth = 0.25) +
       facet_wrap(~stats, ncol = 2,dir = "v") +
@@ -72,16 +73,59 @@ fn_plot <- function(stars_obj, revv, tit, subtit, dif_type){
       theme(axis.title = element_blank(),
             legend.position = "bottom") +
       labs(title = tit,
-           subtitle = subtit) +
+          subtitle = subtit) +
       colorspace::scale_fill_binned_diverging(na.value = "transparent",
                                               n.breaks = 9,
                                               guide = guide_colorsteps(barheight = 0.5,
-                                                                       barwidth = 24,
-                                                                       title.position = "left"),
+                                                                      barwidth = 24,
+                                                                      title.position = "left"),
                                               name = un,
                                               limits = c(-lim, lim),
                                               oob = scales::squish,
                                               rev = revv)
+
+
+    # **********
+
+    # n <- 4
+
+    tb_trans <- 
+        tb |> 
+        mutate(value_trans = if_else(value == 0, 0, log(abs(value))),
+              #  value_trans = (abs(value))^(1/n),
+              value_trans = if_else(value < 0, value_trans*-1, value_trans))
+
+    lim <- max(abs(quantile(tb_trans$value_trans, c(0.05, 0.95), na.rm = T))) |> round()
+    br <- seq(-lim, lim, length.out = 11)
+    lab <- exp(abs(br))
+    # lab <- br^n
+    lab[br < 0] <- lab[br < 0]*-1
+    lab[br == 0] <- 0
+    lab <- round(lab)
+
+    p_log <- 
+      ggplot() +
+      geom_raster(data = tb_trans, aes(lon, lat, fill = value_trans)) + 
+      geom_path(data = land_df, aes(X, Y, group = L), linewidth = 0.25) +
+      facet_wrap(~stats, ncol = 2,dir = "v") +
+      coord_cartesian(ylim = c(-55, 75), xlim = c(-155, 160)) +
+      theme(axis.title = element_blank(),
+            legend.position = "bottom") +
+      labs(title = tit,
+          subtitle = subtit) +
+      colorspace::scale_fill_binned_diverging(na.value = "transparent",
+                                              guide = guide_colorsteps(barheight = 0.5,
+                                                                      barwidth = 30,
+                                                                      title.position = "left"),
+                                              name = str_glue("{un}    "),
+                                              breaks = br,
+                                              labels = lab,
+                                              limits = c(-lim, lim),
+                                              oob = scales::squish,
+                                              rev = revv)
+
+    list(p_nonlog, p_log)
+
     
   } else {
     
@@ -112,8 +156,6 @@ fn_plot <- function(stars_obj, revv, tit, subtit, dif_type){
                                               oob = scales::squish,
                                               rev = revv)
     
-    
-    
   }
   
 }
@@ -123,11 +165,11 @@ fn_plot <- function(stars_obj, revv, tit, subtit, dif_type){
 
 
 
-fn_main <- function(nm, abs = T, revv = F, wl = NA) {
+fn_main <- function(nm, abs = T, revv = F, wl = NA, loggg = F) {
   
-  # nm <- output_vars[24]
+  # nm <- output_vars[21]
   # # delta = T no more delta
-  # abs = F
+  # abs = T
   # revv = T
   # wl = 1
   
@@ -192,7 +234,8 @@ fn_main <- function(nm, abs = T, revv = F, wl = NA) {
 
 ```{r}
 
-fn_main(output_vars[20], wl = 1, revv = T, abs = T)
+p <- fn_main(output_vars[20], wl = 1, revv = T, abs = T) # 3
+p[[1]]
 
 ```
 
@@ -200,7 +243,7 @@ fn_main(output_vars[20], wl = 1, revv = T, abs = T)
 
 ```{r}
 
-fn_main(output_vars[20], wl = 1, revv = T, abs = F)
+p[[2]]
 
 ```
 
@@ -208,7 +251,7 @@ fn_main(output_vars[20], wl = 1, revv = T, abs = F)
 
 ```{r}
 
-fn_main(output_vars[20], wl = 2, revv = T, abs = T)
+fn_main(output_vars[20], wl = 1, revv = T, abs = F) # 4
 
 ```
 
@@ -216,7 +259,8 @@ fn_main(output_vars[20], wl = 2, revv = T, abs = T)
 
 ```{r}
 
-fn_main(output_vars[20], wl = 2, revv = T, abs = F)
+p <- fn_main(output_vars[20], wl = 2, revv = T, abs = T) # 5
+p[[1]]
 
 ```
 
@@ -224,7 +268,7 @@ fn_main(output_vars[20], wl = 2, revv = T, abs = F)
 
 ```{r}
 
-fn_main(output_vars[21], wl = 1, revv = T, abs = T)
+p[[2]]
 
 ```
 
@@ -232,7 +276,7 @@ fn_main(output_vars[21], wl = 1, revv = T, abs = T)
 
 ```{r}
 
-fn_main(output_vars[21], wl = 1, revv = T, abs = F)
+fn_main(output_vars[20], wl = 2, revv = T, abs = F) # 6
 
 ```
 
@@ -240,7 +284,8 @@ fn_main(output_vars[21], wl = 1, revv = T, abs = F)
 
 ```{r}
 
-fn_main(output_vars[21], wl = 2, revv = T, abs = T)
+p <- fn_main(output_vars[21], wl = 1, revv = T, abs = T) # 7
+p[[1]]
 
 ```
 
@@ -248,7 +293,7 @@ fn_main(output_vars[21], wl = 2, revv = T, abs = T)
 
 ```{r}
 
-fn_main(output_vars[21], wl = 2, revv = T, abs = F)
+p[[2]]
 
 ```
 
@@ -256,7 +301,7 @@ fn_main(output_vars[21], wl = 2, revv = T, abs = F)
 
 ```{r}
 
-fn_main(output_vars[22], wl = 1, revv = T, abs = T)
+fn_main(output_vars[21], wl = 1, revv = T, abs = F) # 8
 
 ```
 
@@ -264,7 +309,8 @@ fn_main(output_vars[22], wl = 1, revv = T, abs = T)
 
 ```{r}
 
-fn_main(output_vars[22], wl = 1, revv = T, abs = F)
+p <- fn_main(output_vars[21], wl = 2, revv = T, abs = T) # 9
+p[[1]]
 
 ```
 
@@ -272,7 +318,7 @@ fn_main(output_vars[22], wl = 1, revv = T, abs = F)
 
 ```{r}
 
-fn_main(output_vars[22], wl = 2, revv = T, abs = T)
+p[[2]]
 
 ```
 
@@ -280,7 +326,7 @@ fn_main(output_vars[22], wl = 2, revv = T, abs = T)
 
 ```{r}
 
-fn_main(output_vars[22], wl = 2, revv = T, abs = F)
+fn_main(output_vars[21], wl = 2, revv = T, abs = F) # 10
 
 ```
 
@@ -288,7 +334,8 @@ fn_main(output_vars[22], wl = 2, revv = T, abs = F)
 
 ```{r}
 
-fn_main(output_vars[23], wl = 1, revv = T, abs = T)
+p <- fn_main(output_vars[22], wl = 1, revv = T, abs = T) # 11
+p[[1]]
 
 ```
 
@@ -296,7 +343,7 @@ fn_main(output_vars[23], wl = 1, revv = T, abs = T)
 
 ```{r}
 
-fn_main(output_vars[23], wl = 1, revv = T, abs = F)
+p[[2]]
 
 ```
 
@@ -304,7 +351,7 @@ fn_main(output_vars[23], wl = 1, revv = T, abs = F)
 
 ```{r}
 
-fn_main(output_vars[23], wl = 2, revv = T, abs = T)
+fn_main(output_vars[22], wl = 1, revv = T, abs = F) # 12
 
 ```
 
@@ -312,7 +359,8 @@ fn_main(output_vars[23], wl = 2, revv = T, abs = T)
 
 ```{r}
 
-fn_main(output_vars[23], wl = 2, revv = T, abs = F)
+p <- fn_main(output_vars[22], wl = 2, revv = T, abs = T) # 13
+p[[1]]
 
 ```
 
@@ -320,7 +368,7 @@ fn_main(output_vars[23], wl = 2, revv = T, abs = F)
 
 ```{r}
 
-fn_main(output_vars[24], wl = 1, revv = T, abs = T)
+p[[2]]
 
 ```
 
@@ -328,7 +376,7 @@ fn_main(output_vars[24], wl = 1, revv = T, abs = T)
 
 ```{r}
 
-fn_main(output_vars[24], wl = 1, revv = T, abs = F)
+fn_main(output_vars[22], wl = 2, revv = T, abs = F) # 14
 
 ```
 
@@ -336,7 +384,8 @@ fn_main(output_vars[24], wl = 1, revv = T, abs = F)
 
 ```{r}
 
-fn_main(output_vars[24], wl = 2, revv = T, abs = T)
+p <- fn_main(output_vars[23], wl = 1, revv = T, abs = T) # 15
+p[[1]]
 
 ```
 
@@ -344,7 +393,7 @@ fn_main(output_vars[24], wl = 2, revv = T, abs = T)
 
 ```{r}
 
-fn_main(output_vars[24], wl = 2, revv = T, abs = F)
+p[[2]]
 
 ```
 
@@ -352,7 +401,7 @@ fn_main(output_vars[24], wl = 2, revv = T, abs = F)
 
 ```{r}
 
-fn_main("max-wettest-day", wl = 1, revv = T, abs = T)
+fn_main(output_vars[23], wl = 1, revv = T, abs = F) # 16
 
 ```
 
@@ -360,7 +409,8 @@ fn_main("max-wettest-day", wl = 1, revv = T, abs = T)
 
 ```{r}
 
-fn_main("max-wettest-day", wl = 1, revv = T, abs = F)
+p <- fn_main(output_vars[23], wl = 2, revv = T, abs = T) # 17
+p[[1]]
 
 ```
 
@@ -368,7 +418,7 @@ fn_main("max-wettest-day", wl = 1, revv = T, abs = F)
 
 ```{r}
 
-fn_main("max-wettest-day", wl = 2, revv = T, abs = T)
+p[[2]]
 
 ```
 
@@ -376,9 +426,438 @@ fn_main("max-wettest-day", wl = 2, revv = T, abs = T)
 
 ```{r}
 
-fn_main("max-wettest-day", wl = 2, revv = T, abs = F)
+fn_main(output_vars[23], wl = 2, revv = T, abs = F) # 18
 
 ```
+
+---
+
+```{r}
+
+wd_cordex <- 
+  str_glue("{dir_data}/wd_cordex.nc") |> 
+  read_ncdf() |> 
+  suppressMessages() |> 
+  units::drop_units()
+
+wd_cordex <- suppressMessages(wd_cordex[land_pol])
+
+tb_cordex <- 
+  wd_cordex |> 
+  merge(name = "stats") |> 
+  setNames("d") |> 
+  as_tibble() |> 
+  mutate(wl = wl + 0.5) |> 
+  mutate(d = log(d))
+
+tb_cordex_wl <- 
+  tb_cordex |> 
+  filter(wl == 0.5) |> 
+  filter(stats != "perc_100")
+
+lim <- quantile(tb_cordex_wl$d, c(0.05, 0.95), na.rm = T) |> round()
+br <- seq(first(lim), last(lim), length.out = 11)
+lb <- round(exp(br))
+
+ggplot() +
+  geom_raster(data = tb_cordex_wl, aes(lon, lat, fill = d)) + 
+  geom_path(data = land_df, aes(X, Y, group = L), linewidth = 0.25) +
+  facet_wrap(~stats, ncol = 2,dir = "v") +
+  coord_cartesian(ylim = c(-55, 75), xlim = c(-155, 160)) +
+  theme(axis.title = element_blank(),
+        legend.position = "bottom") +
+  labs(title = "Levels: CORDEX [0.5°C]",
+      subtitle = "Wettest day") +
+  colorspace::scale_fill_binned_sequential("plasma",
+                                          na.value = "transparent",
+                                          n.breaks = 9,
+                                          guide = guide_colorsteps(barheight = 0.5,
+                                                                  barwidth = 24,
+                                                                    title.position ="left"),
+                                          name = "mm   ",
+                                          breaks = br,
+                                          labels = lb,
+                                          limits = c(lim[1], lim[2]),
+                                          oob = scales::squish,
+                                          rev = F)
+
+
+```
+
+---
+
+```{r}
+
+wd_era <- 
+  str_glue("{dir_data}/wd_era.nc") |> 
+  read_ncdf() |> 
+  suppressMessages() |> 
+  units::drop_units()
+
+wd_era <- suppressMessages(wd_era[land_pol])
+
+tb_era <- 
+  wd_era |> 
+  merge(name = "stats") |> 
+  setNames("d") |> 
+  as_tibble() |> 
+  mutate(wl = wl + 0.5) |> 
+  mutate(d = log(d))
+
+tb_era_wl <- 
+  tb_era |> 
+  filter(wl == 0.5) |> 
+  filter(stats != "perc_100")
+
+lim <- quantile(tb_era_wl$d, c(0.05, 0.95), na.rm = T) |> round()
+br <- seq(first(lim), last(lim), length.out = 11)
+lb <- round(exp(br))
+
+ggplot() +
+  geom_raster(data = tb_era_wl, aes(lon, lat, fill = d)) + 
+  geom_path(data = land_df, aes(X, Y, group = L), linewidth = 0.25) +
+  facet_wrap(~stats, ncol = 2,dir = "v") +
+  coord_cartesian(ylim = c(-55, 75), xlim = c(-155, 160)) +
+  theme(axis.title = element_blank(),
+        legend.position = "bottom") +
+  labs(title = "Levels: ERA [0.5°C]",
+      subtitle = "Wettest day") +
+  colorspace::scale_fill_binned_sequential("plasma",
+                                          na.value = "transparent",
+                                          n.breaks = 9,
+                                          guide = guide_colorsteps(barheight = 0.5,
+                                                                  barwidth = 24,
+                                                                    title.position ="left"),
+                                          name = "mm   ",
+                                          breaks = br,
+                                          labels = lb,
+                                          limits = c(lim[1], lim[2]),
+                                          oob = scales::squish,
+                                          rev = F)
+
+```
+
+---
+
+```{r}
+
+tb_cordex_wl <- 
+  tb_cordex |> 
+  filter(wl == 1.0) |> 
+  filter(stats != "perc_100")
+
+lim <- quantile(tb_cordex_wl$d, c(0.05, 0.95), na.rm = T) |> round()
+br <- seq(first(lim), last(lim), length.out = 11)
+lb <- round(exp(br))
+
+ggplot() +
+  geom_raster(data = tb_cordex_wl, aes(lon, lat, fill = d)) + 
+  geom_path(data = land_df, aes(X, Y, group = L), linewidth = 0.25) +
+  facet_wrap(~stats, ncol = 2,dir = "v") +
+  coord_cartesian(ylim = c(-55, 75), xlim = c(-155, 160)) +
+  theme(axis.title = element_blank(),
+        legend.position = "bottom") +
+  labs(title = "Levels: CORDEX [1.0°C]",
+      subtitle = "Wettest day") +
+  colorspace::scale_fill_binned_sequential("plasma",
+                                          na.value = "transparent",
+                                          n.breaks = 9,
+                                          guide = guide_colorsteps(barheight = 0.5,
+                                                                  barwidth = 24,
+                                                                    title.position ="left"),
+                                          name = "mm   ",
+                                          breaks = br,
+                                          labels = lb,
+                                          limits = c(lim[1], lim[2]),
+                                          oob = scales::squish,
+                                          rev = F)
+
+```
+
+---
+
+```{r}
+
+tb_era_wl <- 
+  tb_era |> 
+  filter(wl == 1.0) |> 
+  filter(stats != "perc_100")
+
+lim <- quantile(tb_era_wl$d, c(0.05, 0.95), na.rm = T) |> round()
+br <- seq(first(lim), last(lim), length.out = 11)
+lb <- round(exp(br))
+
+ggplot() +
+  geom_raster(data = tb_era_wl, aes(lon, lat, fill = d)) + 
+  geom_path(data = land_df, aes(X, Y, group = L), linewidth = 0.25) +
+  facet_wrap(~stats, ncol = 2,dir = "v") +
+  coord_cartesian(ylim = c(-55, 75), xlim = c(-155, 160)) +
+  theme(axis.title = element_blank(),
+        legend.position = "bottom") +
+  labs(title = "Levels: ERA [1.0°C]",
+      subtitle = "Wettest day") +
+  colorspace::scale_fill_binned_sequential("plasma",
+                                          na.value = "transparent",
+                                          n.breaks = 9,
+                                          guide = guide_colorsteps(barheight = 0.5,
+                                                                  barwidth = 24,
+                                                                    title.position ="left"),
+                                          name = "mm   ",
+                                          breaks = br,
+                                          labels = lb,
+                                          limits = c(lim[1], lim[2]),
+                                          oob = scales::squish,
+                                          rev = F)
+
+```
+
+---
+
+```{r}
+
+p <- fn_main(output_vars[24], wl = 1, revv = T, abs = T) # 19
+p[[1]]
+
+```
+
+---
+
+```{r}
+
+p[[2]]
+
+```
+
+---
+
+```{r}
+
+fn_main(output_vars[24], wl = 1, revv = T, abs = F) # 20
+
+```
+
+---
+
+```{r}
+
+p <- fn_main(output_vars[24], wl = 2, revv = T, abs = T) # 21
+p[[1]]
+
+```
+
+---
+
+```{r}
+
+p[[2]]
+
+```
+
+---
+
+```{r}
+
+fn_main(output_vars[24], wl = 2, revv = T, abs = F) # 22
+
+```
+
+---
+
+```{r}
+
+tb_cordex_wl <- 
+  tb_cordex |> 
+  filter(wl == 0.5) |> 
+  filter(stats == "perc_100")
+
+lim <- quantile(tb_cordex_wl$d, c(0.05, 0.95), na.rm = T) |> round()
+br <- seq(first(lim), last(lim), length.out = 11)
+lb <- round(exp(br))
+
+ggplot() +
+  geom_raster(data = tb_cordex_wl, aes(lon, lat, fill = d)) + 
+  geom_path(data = land_df, aes(X, Y, group = L), linewidth = 0.25) +
+  # facet_wrap(~stats, ncol = 2,dir = "v") +
+  coord_cartesian(ylim = c(-55, 75), xlim = c(-155, 160)) +
+  theme(axis.title = element_blank(),
+        legend.position = "bottom") +
+  labs(title = "Levels: CORDEX [0.5°C]",
+      subtitle = "Max wettest day") +
+  colorspace::scale_fill_binned_sequential("plasma",
+                                          na.value = "transparent",
+                                          n.breaks = 9,
+                                          guide = guide_colorsteps(barheight = 0.5,
+                                                                  barwidth = 24,
+                                                                    title.position ="left"),
+                                          name = "mm   ",
+                                          breaks = br,
+                                          labels = lb,
+                                          limits = c(lim[1], lim[2]),
+                                          oob = scales::squish,
+                                          rev = F)
+
+```
+
+---
+
+```{r}
+
+tb_era_wl <- 
+  tb_era |> 
+  filter(wl == 0.5) |> 
+  filter(stats == "perc_100")
+
+lim <- quantile(tb_era_wl$d, c(0.05, 0.95), na.rm = T) |> round()
+br <- seq(first(lim), last(lim), length.out = 11)
+lb <- round(exp(br))
+
+ggplot() +
+  geom_raster(data = tb_era_wl, aes(lon, lat, fill = d)) + 
+  geom_path(data = land_df, aes(X, Y, group = L), linewidth = 0.25) +
+  # facet_wrap(~stats, ncol = 2,dir = "v") +
+  coord_cartesian(ylim = c(-55, 75), xlim = c(-155, 160)) +
+  theme(axis.title = element_blank(),
+        legend.position = "bottom") +
+  labs(title = "Levels: ERA [0.5°C]",
+      subtitle = "Max wettest day") +
+  colorspace::scale_fill_binned_sequential("plasma",
+                                          na.value = "transparent",
+                                          n.breaks = 9,
+                                          guide = guide_colorsteps(barheight = 0.5,
+                                                                  barwidth = 24,
+                                                                    title.position ="left"),
+                                          name = "mm   ",
+                                          breaks = br,
+                                          labels = lb,
+                                          limits = c(lim[1], lim[2]),
+                                          oob = scales::squish,
+                                          rev = F)
+```
+
+---
+
+```{r}
+
+tb_cordex_wl <- 
+  tb_cordex |> 
+  filter(wl == 1.0) |> 
+  filter(stats == "perc_100")
+
+lim <- quantile(tb_cordex_wl$d, c(0.05, 0.95), na.rm = T) |> round()
+br <- seq(first(lim), last(lim), length.out = 11)
+lb <- round(exp(br))
+
+ggplot() +
+  geom_raster(data = tb_cordex_wl, aes(lon, lat, fill = d)) + 
+  geom_path(data = land_df, aes(X, Y, group = L), linewidth = 0.25) +
+  # facet_wrap(~stats, ncol = 2,dir = "v") +
+  coord_cartesian(ylim = c(-55, 75), xlim = c(-155, 160)) +
+  theme(axis.title = element_blank(),
+        legend.position = "bottom") +
+  labs(title = "Levels: CORDEX [1.0°C]",
+      subtitle = "Max wettest day") +
+  colorspace::scale_fill_binned_sequential("plasma",
+                                          na.value = "transparent",
+                                          n.breaks = 9,
+                                          guide = guide_colorsteps(barheight = 0.5,
+                                                                  barwidth = 24,
+                                                                    title.position ="left"),
+                                          name = "mm   ",
+                                          breaks = br,
+                                          labels = lb,
+                                          limits = c(lim[1], lim[2]),
+                                          oob = scales::squish,
+                                          rev = F)
+
+```
+
+---
+
+```{r}
+
+tb_era_wl <- 
+  tb_era |> 
+  filter(wl == 1.0) |> 
+  filter(stats == "perc_100")
+
+lim <- quantile(tb_era_wl$d, c(0.05, 0.95), na.rm = T) |> round()
+br <- seq(first(lim), last(lim), length.out = 11)
+lb <- round(exp(br))
+
+ggplot() +
+  geom_raster(data = tb_era_wl, aes(lon, lat, fill = d)) + 
+  geom_path(data = land_df, aes(X, Y, group = L), linewidth = 0.25) +
+  # facet_wrap(~stats, ncol = 2,dir = "v") +
+  coord_cartesian(ylim = c(-55, 75), xlim = c(-155, 160)) +
+  theme(axis.title = element_blank(),
+        legend.position = "bottom") +
+  labs(title = "Levels: ERA [1.0°C]",
+      subtitle = "Max wettest day") +
+  colorspace::scale_fill_binned_sequential("plasma",
+                                          na.value = "transparent",
+                                          n.breaks = 9,
+                                          guide = guide_colorsteps(barheight = 0.5,
+                                                                  barwidth = 24,
+                                                                    title.position ="left"),
+                                          name = "mm   ",
+                                          breaks = br,
+                                          labels = lb,
+                                          limits = c(lim[1], lim[2]),
+                                          oob = scales::squish,
+                                          rev = F)
+```
+
+---
+
+```{r}
+
+p <- fn_main("max-wettest-day", wl = 1, revv = T, abs = T) # 23
+p[[1]]
+
+```
+
+---
+
+```{r}
+
+p[[2]]
+
+```
+
+---
+
+```{r}
+
+fn_main("max-wettest-day", wl = 1, revv = T, abs = F) # 24
+
+```
+
+---
+
+```{r}
+
+p <- fn_main("max-wettest-day", wl = 2, revv = T, abs = T) # 25
+p[[1]]
+
+```
+
+---
+
+```{r}
+
+p[[2]]
+
+```
+
+---
+
+```{r}
+
+fn_main("max-wettest-day", wl = 2, revv = T, abs = F) # 26
+
+```
+
+---
 
 
 

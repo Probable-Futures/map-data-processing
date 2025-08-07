@@ -108,46 +108,74 @@ rt_tile_table <- function(s, tile_size, land = NULL) {
 
 #'@export
 rt_tile_load <- function(start_x, start_y, count_x, count_y, list_files, parallel = NULL) {
-
-  box::use(stars[...],
-           future[...],
-           furrr[...],
-           stars[...])
            
   
   # Helper function to load a tile of a list of files
-  
+
   # NEEDS A WAY TO SPECIFY TIME STEPS TO IMPORT!
   # OR TO ACCOUNT FOR 1 TIME STEP
-  
-  
-  if (!is.null(parallel)) {
-    if (parallel) {
-      oplan <- plan(multicore)
-    } else {
-      oplan <- plan(sequential)
-    }
+
+
+  if (is.null(parallel)) {
+
+    s_tile <-
+      list_files |>
+      purrr::map(
+        \(f) {
+          stars::read_ncdf(
+            f,
+            ignore_bounds = T,
+            ncsub = cbind(
+              start = c(start_x, start_y, 1),
+              count = c(count_x, count_y, NA)
+            )
+          ) |>
+            suppressMessages()
+        })
     
-    on.exit(plan(oplan))
+  } else if (parallel == "mirai") {
+
+    s_tile <-
+      list_files |>
+      purrr::map(purrr::in_parallel(
+        \(f) {
+          stars::read_ncdf(
+            f,
+            ignore_bounds = T,
+            ncsub = cbind(
+              start = c(start_x, start_y, 1),
+              count = c(count_x, count_y, NA)
+            )
+          ) |>
+            suppressMessages()
+        },
+        start_x = start_x,
+        start_y = start_y,
+        count_x = count_x,
+        count_y = count_y
+      ))
+
+  } else if (parallel == "future") {
+
+    s_tile <-
+      list_files |>
+      furrr::future_map(
+        \(f) {
+          stars::read_ncdf(
+            f,
+            ignore_bounds = T,
+            ncsub = cbind(
+              start = c(start_x, start_y, 1),
+              count = c(count_x, count_y, NA)
+            )
+          ) |>
+            suppressMessages()
+        })
+
   }
-  
-  s_tile <-
-    list_files |>
-    future_map(\(f){
-      
-      read_ncdf(f,
-                ignore_bounds = T,
-                ncsub = cbind(start = c(start_x,
-                                        start_y,
-                                        1),
-                              
-                              count = c(count_x,
-                                        count_y,
-                                        NA)))
-      
-    }) |>
-    suppressMessages() |>
-    do.call(c, args = _)
+
+  s_tile <- 
+    do.call(c, s_tile)
   
   # if (grid_360) {
   # 
@@ -228,11 +256,11 @@ rt_tile_mosaic <- function(df_tiles, dir_tiles, spatial_dims, time_dim = NULL) {
            stringr[...])
   
   s <- 
-    st_as_stars(dimensions = spatial_dims)
+    stars::st_as_stars(dimensions = spatial_dims)
   
   df_tiles <- 
     df_tiles |> 
-    st_drop_geometry()
+    sf::st_drop_geometry()
   
   
   if (!is.null(time_dim)) {
@@ -240,18 +268,16 @@ rt_tile_mosaic <- function(df_tiles, dir_tiles, spatial_dims, time_dim = NULL) {
     time_dim_full <-
       dir_tiles |>
       fs::dir_ls() |>
-      first() |>
-      read_ncdf(proxy = T) |>
+      dplyr::first() |>
+      stars::read_ncdf(proxy = T) |>
       suppressMessages() |> 
-      st_get_dimension_values("time")
+      stars::st_get_dimension_values("time")
     
     time_lims <-
-      c(which(time_dim_full == first(time_dim)),
-        which(time_dim_full == last(time_dim)))
+      c(which(time_dim_full == dplyr::first(time_dim)),
+        which(time_dim_full == dplyr::last(time_dim)))
     
   }
-  
-  
   
   
   # if tiling accounts for land coverage
@@ -259,7 +285,7 @@ rt_tile_mosaic <- function(df_tiles, dir_tiles, spatial_dims, time_dim = NULL) {
     
     rows <-
       # loop through rows
-      map(unique(df_tiles$start_y), function(row_i) {
+      purrr::map(unique(df_tiles$start_y), function(row_i) {
         
         one_row <- 
           df_tiles |>  
@@ -413,55 +439,56 @@ rt_tile_mosaic <- function(df_tiles, dir_tiles, spatial_dims, time_dim = NULL) {
 #'@export
 rt_tile_mosaic_gdal <- function(tile_files, dir_res, spatial_dims = NULL, time_dim = NULL, time_full = NULL) {
   
-  box::use(stars[...],
-           sf[...],
-           dplyr[...],
-           purrr[...],
-           future[...],
-           furrr[...],
-           stringr[...])
-  
   if (!is.null(time_dim)) {
     
     # identify positions of time range in relation to full time vector
     time_pos <-
-      c(which(time_full == first(time_dim)),
-        which(time_full == last(time_dim)))
+      c(which(time_full == dplyr::first(time_dim)),
+        which(time_full == dplyr::last(time_dim)))
     
     # subset tile files
     # update paths
     
-    dir_tiles_sub <- str_glue("{dir_res}/tiles")
+    dir_tiles_sub <- stringr::str_glue("{dir_res}/tiles")
     fs::dir_create(dir_tiles_sub)
     
-    tile_files <- 
-      future_map(tile_files, \(f){
-        
-        new_f <- 
-          str_glue("{dir_tiles_sub}/{f |> fs::path_file() |> fs::path_ext_remove()}.tif")
-        
-        read_ncdf(f,
-                  ncsub = cbind(start = c(1, 1, time_pos[1]),
-                                count = c(NA,NA,time_pos[2]-time_pos[1]+1))) |> 
-          suppressMessages() |> 
-          write_stars(new_f)
-        
-        return(new_f)
-        
-      }) |> 
+    tile_files <-
+      purrr::map(
+        tile_files,
+        purrr::in_parallel(
+          \(f) {
+            new_f <-
+              stringr::str_glue(
+                "{dir_tiles_sub}/{f |> fs::path_file() |> fs::path_ext_remove()}.tif"
+              )
+
+            stars::read_ncdf(
+              f,
+              ncsub = cbind(start = c(1, 1, time_pos[1]),
+                            count = c(NA, NA, time_pos[2] - time_pos[1] + 1))
+            ) |>
+              suppressMessages() |>
+              stars::write_stars(new_f)
+
+            return(new_f)
+          },
+          dir_tiles_sub = dir_tiles_sub,
+          time_pos = time_pos
+        )
+      ) |>
       unlist()
     
   }
   
   
   # mosaic with gdalwarp
-  dir_mos <- str_glue("{dir_res}/mos")
+  dir_mos <- stringr::str_glue("{dir_res}/mos")
   fs::dir_create(dir_mos)
   
   f_res <- 
-    str_glue("{dir_mos}/mos.tif")
+    stringr::str_glue("{dir_mos}/mos.tif")
   
-  gdal_utils(
+  sf::gdal_utils(
     "warp",
     source = tile_files,
     destination = f_res,
@@ -470,15 +497,15 @@ rt_tile_mosaic_gdal <- function(tile_files, dir_res, spatial_dims = NULL, time_d
   
   s <- 
     f_res |> 
-    read_stars()
+    stars::read_stars()
   
   if (!is.null(spatial_dims)) {
     
     s_ref <- 
-      st_as_stars(dimensions = spatial_dims)
+      stars::st_as_stars(dimensions = spatial_dims)
     
     s <- 
-      st_warp(s, s_ref)
+      stars::st_warp(s, s_ref)
     
   }
   

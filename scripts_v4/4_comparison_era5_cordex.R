@@ -1,12 +1,14 @@
 
-# system("sudo mount -o discard,defaults /dev/sdc /mnt/pers_disk_300/")
+dir_data <- "/mnt/pers_disk/dif_era_cordex"
+
+
 
 
 library(tidyverse)
 library(stars)
 library(furrr)
 
-box::use(../functions/general_tools[...])
+box::use(functions/general_tools[...])
 
 options(future.fork.enable = T,
         future.rng.onMisuse = "ignore")
@@ -26,8 +28,9 @@ output_vars_cordex <-
   str_replace("wettest-90", "90-wettest")
 
 
-dir_rawdata <- "/mnt/pers_disk_300/rawdata"
-dir_res <- "/mnt/pers_disk_300/dif_era_cordex"
+fs::dir_create(dir_data)
+dir_rawdata <- str_glue("{dir_data}/rawdata")
+dir_res <- str_glue("{dir_data}/dif")
 
 fs::dir_create(dir_rawdata)
 fs::dir_create(dir_res)
@@ -51,6 +54,8 @@ ff_cordex <-
   )
   
 
+output_vars <- output_vars[20:24]
+output_vars_cordex <- output_vars_cordex[20:24]
 walk(seq_along(output_vars), \(i){
   
   ov <- output_vars[i]
@@ -179,6 +184,16 @@ walk(seq_along(output_vars), \(i){
       setNames(names(s_era))
     
   }
+
+  if(ov == "wettest-day"){
+
+    s_cordex |> 
+      rt_write_nc(str_glue("{dir_res}/wd_cordex.nc"))
+
+    s_era |> 
+      rt_write_nc(str_glue("{dir_res}/wd_era.nc"))
+
+  }
   
   
   st_dimensions(s_cordex)[3] <- st_dimensions(s_era)[3]
@@ -203,6 +218,7 @@ walk(seq_along(output_vars), \(i){
     
   if (ov == "wettest-day"){
     
+    # annual max
     dif <- 
       list(abs = dif_abs |> select(-5),
            rel = 
@@ -215,6 +231,7 @@ walk(seq_along(output_vars), \(i){
              split("attributes")
              )
     
+    # wl max
     dif_2 <- 
       list(abs = dif_abs |> select(5),
            rel = 
@@ -243,7 +260,7 @@ walk(seq_along(output_vars), \(i){
       set_names(c("abs", "rel"))
     
   }
-  
+
   
   iwalk(dif, \(s, d){
     

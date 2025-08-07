@@ -34,6 +34,7 @@ yrs <- seq(1970, 2021) # add 1 year at each end
 
 # get all file names
 
+# CHANGE!!!
 input_vars_all <- 
   var_info_list[output_vars] |> 
   map(pluck, "input_vars") |>

@@ -6,7 +6,7 @@ fun_list <-
     days_above_32c = function(s) {
       
       s$tasmax |> 
-        mutate(days = if_else(t2m >= units::set_units(32, degC), 1L, 0L)) |> 
+        mutate(days = if_else(tasmax >= units::set_units(32, degC), 1L, 0L)) |> 
         select(days) |> 
         aggregate(sum, by = "1 year") |> 
         aperm(c(2,3,1))
@@ -20,7 +20,7 @@ fun_list <-
     days_above_35c = function(s) {
       
       s$tasmax |> 
-        mutate(days = if_else(t2m >= units::set_units(35, degC), 1L, 0L)) |> 
+        mutate(days = if_else(tasmax >= units::set_units(35, degC), 1L, 0L)) |> 
         select(days) |> 
         aggregate(sum, by = "1 year") |> 
         aperm(c(2,3,1))
@@ -34,7 +34,7 @@ fun_list <-
     days_above_38c = function(s) {
       
       s$tasmax |> 
-        mutate(days = if_else(t2m >= units::set_units(38, degC), 1L, 0L)) |> 
+        mutate(days = if_else(tasmax >= units::set_units(38, degC), 1L, 0L)) |> 
         select(days) |> 
         aggregate(sum, by = "1 year") |> 
         aperm(c(2,3,1))
@@ -48,7 +48,7 @@ fun_list <-
     days_above_45c = function(s) {
       
       s$tasmax |> 
-        mutate(days = if_else(t2m >= units::set_units(45, degC), 1L, 0L)) |> 
+        mutate(days = if_else(tasmax >= units::set_units(45, degC), 1L, 0L)) |> 
         select(days) |> 
         aggregate(sum, by = "1 year") |> 
         aperm(c(2,3,1))
@@ -99,7 +99,7 @@ fun_list <-
     freezing_days = function(s) {
       
       s$tasmax |> 
-        mutate(days = if_else(t2m < units::set_units(0, degC), 1L, 0L)) |> 
+        mutate(days = if_else(tasmax < units::set_units(0, degC), 1L, 0L)) |> 
         select(days) |> 
         aggregate(sum, by = "1 year") |> 
         aperm(c(2,3,1))
@@ -113,7 +113,7 @@ fun_list <-
     frost_nights = function(s) {
       
       s$tasmin |> 
-        mutate(days = if_else(t2m < units::set_units(0, degC), 1L, 0L)) |> 
+        mutate(days = if_else(tasmin < units::set_units(0, degC), 1L, 0L)) |> 
         select(days) |> 
         aggregate(sum, by = "1 year") |> 
         aperm(c(2,3,1))
@@ -127,7 +127,7 @@ fun_list <-
     nights_above_20c = function(s) {
       
       s$tasmin |> 
-        mutate(days = if_else(t2m >= units::set_units(20, degC), 1L, 0L)) |> 
+        mutate(days = if_else(tasmin >= units::set_units(20, degC), 1L, 0L)) |> 
         select(days) |> 
         aggregate(sum, by = "1 year") |> 
         aperm(c(2,3,1))
@@ -141,7 +141,7 @@ fun_list <-
     nights_above_25c = function(s) {
       
       s$tasmin |> 
-        mutate(days = if_else(t2m >= units::set_units(25, degC), 1L, 0L)) |> 
+        mutate(days = if_else(tasmin >= units::set_units(25, degC), 1L, 0L)) |> 
         select(days) |> 
         aggregate(sum, by = "1 year") |> 
         aperm(c(2,3,1))
@@ -170,11 +170,13 @@ fun_list <-
         c(s$tas,
           s$tas |> 
             st_dim_to_attr(2))
+
+      lat_name <- st_dimensions(ss)[2] |> names()
       
       s_north <-
         ss |> 
         filter(month(time) %in% c(12,1,2)) |> 
-        mutate(n = if_else(latitude >= 0, t2m, NA)) |> 
+        mutate(n = if_else(!!sym(lat_name) >= 0, tas, NA)) |> 
         select(n) |> 
         aggregate(by = "1 year", mean) |> 
         aperm(c(2,3,1))
@@ -182,13 +184,13 @@ fun_list <-
       s_south <-
         ss |> 
         filter(month(time) %in% c(6,7,8)) |> 
-        mutate(s = if_else(latitude < 0, t2m, NA)) |> 
+        mutate(s = if_else(!!sym(lat_name) < 0, tas, NA)) |> 
         select(s) |> 
         aggregate(by = "1 year", mean) |> 
         aperm(c(2,3,1))
       
       c(s_north, s_south, along = "hemi") |>
-        st_apply(c(1,2,3), sum, na.rm = T, .fname = "t2m")
+        st_apply(c(1,2,3), sum, na.rm = T, .fname = "tas")
       
     },
     
@@ -280,42 +282,48 @@ fun_list <-
     
     total_annual_precipitation = function(s) {
         
-        time_dim <- 
-          s$precip |> 
-          st_get_dimension_values(3)
+      cl <- make_cluster(cores-1)
+
+      time_dim <- 
+        s$precip |> 
+        st_get_dimension_values(3)
         
-        year_vector <-
-          time_dim |> 
-          str_sub(end = 4) |> 
-          as.numeric()
-        
-        year_vector_unique <- 
-          year_vector |> 
-          unique()
-        
-        
+      year_vector <-
+        time_dim |> 
+        str_sub(end = 4) |> 
+        as.numeric()
+      
+      year_vector_unique <- 
+        year_vector |> 
+        unique()
+
+      r <- 
         s$precip |>
-          st_apply(c(1,2), \(x){
+        st_apply(c(1,2), \(x){
+          
+          if (all(is.na(x))){
             
-            if (all(is.na(x))){
-              
-              rep(NA, length(year_vector_unique))
-              
-            } else {
-              
-              aggregate(x, by = list(year_vector), FUN = sum)$x
-              
-            }
+            rep(NA, length(year_vector_unique))
             
-          },
-          FUTURE = T,
-          .fname = "time") |> 
-          aperm(c(2,3,1)) |> 
-          st_set_dimensions(3, values = seq(paste0(first(year_vector),"-01-01") |> as_date(),
-                                            paste0(last(year_vector), "-01-01") |> as_date(),
-                                            by = "1 year"))
+          } else {
+            
+            aggregate(x, by = list(year_vector), FUN = sum)$x
+            
+          }
+          
+        },
+        CLUSTER = cl,
+        .fname = "time") |> 
+        aperm(c(2,3,1)) |> 
+        st_set_dimensions(3, values = seq(paste0(first(year_vector),"-01-01") |> as_date(),
+                                          paste0(last(year_vector), "-01-01") |> as_date(),
+                                          by = "1 year"))
+
+      stop_cluster(cl)
+
+      return(r)
         
-      },
+    },
     
     
     # *****
@@ -323,6 +331,8 @@ fun_list <-
     
     wettest_90_days = function(s) {
       
+      # cl <- make_cluster(cores-1)
+
       time_dim <- 
         s$precip |> 
         st_get_dimension_values(3)
@@ -336,7 +346,8 @@ fun_list <-
         year_vector |> 
         unique()
       
-      s$precip |>
+      r <- 
+        s$precip |>
         st_apply(c(1,2), \(x){
           
           if (all(is.na(x))){
@@ -388,7 +399,7 @@ fun_list <-
           }
           
         },
-        FUTURE = T,
+        # CLUSTER = cl,
         .fname = "time") |>
         aperm(c(2,3,1)) |> 
         st_set_dimensions(3, 
@@ -396,6 +407,11 @@ fun_list <-
                                        paste0(last(year_vector), "-01-01") |> as_date(),
                                        by = "1 year")
                           )
+      
+      # stop_cluster(cl)
+
+      return(r)
+      
     },
     
     
@@ -404,8 +420,13 @@ fun_list <-
     
     snowy_days = function(s) {
       
+      un_precip <- 
+        s$precip |> 
+        pull() |> 
+        units::deparse_unit()
+
       c(s$precip, s$tas) |> 
-        mutate(days = if_else(tp >= units::set_units(1, mm/d) & t2m < units::set_units(0, degC), 1L, 0L)) |> 
+        mutate(days = if_else(precip >= units::set_units(1, !!un_precip) & tas < units::set_units(0, degC), 1L, 0L)) |> 
         select(days) |> 
         aggregate(sum, by = "1 year") |> 
         aperm(c(2,3,1))
@@ -417,6 +438,8 @@ fun_list <-
     
     
     dry_hot_days = function(s) {
+      
+      cl <- make_cluster(cores-1)
       
       time_dim <- 
         s$precip |> 
@@ -435,35 +458,44 @@ fun_list <-
         c(first(which(year_vector == 1971)),
           last(which(year_vector == 2000)))
       
-      c(units::drop_units(s$precip), 
-        units::drop_units(s$tasmax), 
-        along = "v") |> 
+      r <- 
+        c(units::drop_units(s$precip), 
+         units::drop_units(s$tasmax), 
+         along = "v") |> 
         
-        st_apply(c(1,2), \(x){
+        st_apply(c(1,2), \(x, bl, yvu, yv){
           
           if (all(is.na(x[,1]))){
             
-            rep(NA, length(year_vector_unique))
+            rep(NA, length(yvu))
             
           } else {
             
-            precip_cond <- x[,1] < quantile(x[,1][base_lims[1]:base_lims[2]], 0.1) 
-            tasmax_cond <- x[,2] >= quantile(x[,2][base_lims[1]:base_lims[2]], 0.9)
+            precip_cond <- x[,1] < quantile(x[,1][bl[1]:bl[2]], 0.1) 
+            tasmax_cond <- x[,2] >= quantile(x[,2][bl[1]:bl[2]], 0.9)
             
             joint_cond <- precip_cond & tasmax_cond
             
-            aggregate(joint_cond, by = list(year(time_dim)), sum)$x
+            aggregate(joint_cond, by = list(yv), sum)$x
             
           }
           
         },
-        FUTURE = T,
+        bl = base_lims,
+        yvu = year_vector_unique,
+        yv = year_vector,
+
+        CLUSTER = cl,
         .fname = "time") |> 
         aperm(c(2,3,1)) |> 
         st_set_dimensions(3, seq(paste0(first(year_vector),"-01-01") |> as_date(),
                                  paste0(last(year_vector), "-01-01") |> as_date(),
                                  by = "1 year")
                           )
+
+      stop_cluster(cl)
+
+      return(r)
       
     },
     
