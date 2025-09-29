@@ -202,7 +202,7 @@ l_s_weights <-
 # loop through variables
 
 walk(output_vars[24], function(ov) {
-  # ov = output_vars[24]
+  # ov = output_vars[1]
 
   print(str_glue(" "))
   print(str_glue("Mosaicking {ov}"))
@@ -212,26 +212,18 @@ walk(output_vars[24], function(ov) {
       message(dom)
 
       # load ensembled map
-      # ff <-
-      #   "gs://clim_data_reg_useast1/cordex/warming_level_aggregates/{ov}/{dom}/CORDEX_CORE_ensemble/" |>
-      #   str_glue() |>
-      #   rt_gs_list_files() |>
-      #   rt_gs_download_files(dir_rawdata, quiet = T)
-
-      # *****
       ff <-
-        dir_res |>
-        fs::dir_ls() |>
-        str_subset(str_glue("_{dom}_")) |>
-        str_subset("GLOBAL", negate = T)
-      # *****
+        "gs://clim_data_reg_useast1/cordex/warming_level_aggregates/{ov}/{dom}/CORDEX_CORE_ensemble/" |>
+        str_glue() |>
+        rt_gs_list_files() |>
+        rt_gs_download_files(dir_rawdata, quiet = T)
 
       ss <-
         ff |>
         map(read_ncdf) |>
         suppressMessages()
 
-      # fs::file_delete(ff)
+      fs::file_delete(ff)
 
       s <-
         do.call(c, c(ss, along = "wl"))
@@ -328,10 +320,10 @@ walk(output_vars[24], function(ov) {
       gatt_val = "https://github.com/Probable-Futures/map-data-processing"
     )
 
-    # str_glue(
-    #   "gcloud storage mv {f_res} {dir_gs_cordex}/warming_level_aggregates/{ov}/GLOBAL/CORDEX_CORE_ensemble/"
-    # ) |>
-    #   system(ignore.stdout = T, ignore.stderr = T)
+    str_glue(
+      "gcloud storage mv {f_res} {dir_gs_cordex}/warming_level_aggregates/{ov}/GLOBAL/CORDEX_CORE_ensemble/"
+    ) |>
+      system(ignore.stdout = T, ignore.stderr = T)
   })
 
   # if(str_detect(final_name, "change")){

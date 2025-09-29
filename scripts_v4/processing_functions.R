@@ -182,22 +182,14 @@ calc_stats_wl <- function(s, un) {
       c(1, 2),
       \(x) {
         if (any(is.na(x))) {
-          # r <- rep(NA, 8)
-          r <- rep(NA, 3) # ***** special case
+          r <- rep(NA, 8)
         } else {
-          # r <-
-          #   c(mean(x),
-          #     quantile(x, c(0, 0.05, 0.25, 0.5, 0.75, 0.95, 1))
-          #   )
-
           r <-
-            quantile(x, c(0.98, 0.99, 1)) # ***** special case
+            c(mean(x), quantile(x, c(0, 0.05, 0.25, 0.5, 0.75, 0.95, 1)))
         }
 
-        # r |>
-        #   set_names(c("mean", str_glue("perc_{c(0, 5, 25, 50, 75, 95, 100)}")))
         r |>
-          set_names(str_glue("perc_{c(98,99,100)}")) # ***** special case
+          set_names(c("mean", str_glue("perc_{c(0, 5, 25, 50, 75, 95, 100)}")))
       },
       FUTURE = T,
       .fname = "stats"

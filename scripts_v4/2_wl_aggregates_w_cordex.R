@@ -84,7 +84,6 @@ output_vars |>
 
           ff <-
             rt_gs_list_files(d) |>
-            str_subset("-01.nc") |> # no versions
             str_subset(yr_subset) |>
             rt_gs_download_files(dir_rawdata, quiet = T)
 
@@ -144,8 +143,7 @@ output_vars |>
       s_wl_stats |>
         iwalk(\(s, wl) {
           f_res <- str_glue(
-            # "{dir_res}/CORDEX-CORE-ens_{dom}_{str_replace_all(v, '_', '-')}_wl-{wl}_stats.nc"
-            "{dir_res}/CORDEX-CORE-ens_{dom}_{str_replace_all(v, '_', '-')}_wl-{wl}_98-99-199.nc"
+            "{dir_res}/CORDEX-CORE-ens_{dom}_{str_replace_all(v, '_', '-')}_wl-{wl}_stats.nc"
           )
 
           rt_write_nc(
@@ -155,11 +153,10 @@ output_vars |>
             gatt_val = "https://github.com/Probable-Futures/map-data-processing"
           )
 
-          # UNCOMMENT THIS!!!
-          # str_glue(
-          #   "gcloud storage mv {f_res} {dir_gs_cordex}/warming_level_aggregates/{v}/{dom}/CORDEX_CORE_ensemble/"
-          # ) |>
-          #   system(ignore.stdout = T, ignore.stderr = T)
+          str_glue(
+            "gcloud storage mv {f_res} {dir_gs_cordex}/warming_level_aggregates/{v}/{dom}/CORDEX_CORE_ensemble/"
+          ) |>
+            system(ignore.stdout = T, ignore.stderr = T)
         })
     })
   })
