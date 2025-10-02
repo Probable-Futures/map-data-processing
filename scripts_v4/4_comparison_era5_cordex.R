@@ -54,8 +54,8 @@ ff_cordex <-
   )
   
 
-output_vars <- output_vars[20:24]
-output_vars_cordex <- output_vars_cordex[20:24]
+output_vars <- output_vars[22]
+output_vars_cordex <- output_vars_cordex[22]
 walk(seq_along(output_vars), \(i){
   
   ov <- output_vars[i]

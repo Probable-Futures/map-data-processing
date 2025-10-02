@@ -129,6 +129,13 @@ fn_plot <- function(stars_obj, revv, tit, subtit, dif_type){
     
   } else {
     
+    if (any(tb$value == 0, na.rm = T)) {
+      tb <- 
+        tb |> 
+        mutate(value = if_else(value == 0, NA, value))
+    }
+
+
     tb_log <- 
       tb |> 
       mutate(value = log(value))
@@ -167,9 +174,9 @@ fn_plot <- function(stars_obj, revv, tit, subtit, dif_type){
 
 fn_main <- function(nm, abs = T, revv = F, wl = NA, loggg = F) {
   
-  # nm <- output_vars[21]
+  # nm <- output_vars[22]
   # # delta = T no more delta
-  # abs = T
+  # abs = F
   # revv = T
   # wl = 1
   
