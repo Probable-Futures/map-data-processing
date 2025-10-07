@@ -1,6 +1,6 @@
 fn_derived <- function(derived_var) {
   outfile <-
-    str_glue("{dir_derived}/{dom}_{derived_var}_yr_{rcm_}_{gcm_}.nc") # v32 for new
+    str_glue("{dir_derived}/{dom}_{derived_var}_yr_{rcm_}_{gcm_}_v3-01.nc") # v32 for new
 
   if (file.exists(outfile)) {
     file.remove(outfile)
@@ -534,243 +534,27 @@ fn_derived <- function(derived_var) {
       if (v == "tasmax") {
         thresh <- 90
         command <- "gec"
-        f <- "tasmax_cat.nc"
       } else if (v == "pr") {
         thresh <- 10
-        command <- "lec"
-        str_glue("cdo mulc,864000 {dir_cat}/pr_cat.nc {dir_cat}/pr_cat2.nc") %>%
-          system(ignore.stdout = T, ignore.stderr = T)
-        fs::file_delete(str_glue("{dir_cat}/pr_cat.nc"))
-        str_glue("cdo expr,'rounded_pr=floor(pr)' {dir_cat}/pr_cat2.nc {dir_cat}/pr_cat3.nc") |>
-          system(ignore.stdout = T, ignore.stderr = T)
-        fs::file_delete(str_glue("{dir_cat}/pr_cat2.nc"))
-        # we consider anything below 0.1 mm/day as 0, so we
-        # multiply by 86400 then by 10 then round with floor
-        f <- str_glue("pr_cat3.nc")
+        command <- "ltc"
       }
 
       # subset baseline
-      str_glue("cdo selyear,1971/2000 {dir_cat}/{f} {dir_cat}/{v}_step1.nc") %>%
+      str_glue("cdo selyear,1971/2000 {dir_cat}/{v}_cat.nc {dir_cat}/{v}_step1.nc") %>%
         system(ignore.stdout = T, ignore.stderr = T)
 
       # calculate percentile
-      # str_glue("cdo timpctl,{thresh} {dir_cat}/{v}_step1.nc -timmin {dir_cat}/{v}_step1.nc -timmax {dir_cat}/{v}_step1.nc {dir_cat}/{v}_step2.nc") %>%
-      #   system(ignore.stdout = T, ignore.stderr = T)
-      length_time_bl <-
-        str_glue("{dir_cat}/{v}_step1.nc") |>
-        read_ncdf(proxy = T) %>%
-        suppressMessages() %>%
-        {
-          dim(.)[3]
-        }
       str_glue(
-        "cdo seltimestep,{thresh*length_time_bl/100} -timsort {dir_cat}/{v}_step1.nc {dir_cat}/{v}_step2.nc"
-      ) |>
+        "cdo timpctl,{thresh} {dir_cat}/{v}_step1.nc -timmin {dir_cat}/{v}_step1.nc -timmax {dir_cat}/{v}_step1.nc {dir_cat}/{v}_step2.nc"
+      ) %>%
         system(ignore.stdout = T, ignore.stderr = T)
 
       # obtain no. days under/above baseline percentile
       str_glue(
-        "cdo -{command},0 -sub {dir_cat}/{f} {dir_cat}/{v}_step2.nc {dir_cat}/{v}_step3.nc"
+        "cdo -{command},0 -sub {dir_cat}/{v}_cat.nc {dir_cat}/{v}_step2.nc {dir_cat}/{v}_step3.nc"
       ) %>%
         system(ignore.stdout = T, ignore.stderr = T)
     })
-
-    # **********
-
-    # "/mnt/pers_disk/cat/pr_step1.nc" |>
-    #   read_ncdf(ncsub = cbind(start = c(1, 1, 1), count = c(NA, NA, 1))) -> miau
-
-    # rt_from_coord_to_ind(miau, 10, 32) # tunisia
-    # rt_from_coord_to_ind(miau, 18, -1) # drc
-
-    # xx <- 173
-    # yy <- 390 # tunisia
-
-    # miau[, xx, yy, 1] |> as_tibble()
-
-    # tictoc::tic()
-    # "/mnt/pers_disk/cat/pr_step1.nc" |>
-    #   read_ncdf(ncsub = cbind(start = c(xx, yy, 1), count = c(1, 1, NA))) -> pr_bl
-    # tictoc::toc()
-
-    # pr_bl |>
-    #   pull() |>
-    #   as.vector() -> pr_bl
-
-    # q <- quantile(pr_bl, 0.1, type = 3) # 3.117334e-17 # 0
-
-    # "/mnt/pers_disk/cat/pr_step2.nc" |>
-    #   read_ncdf(ncsub = cbind(start = c(xx, yy, 1), count = c(1, 1, NA)), make_time = F) |>
-    #   pull() |>
-    #   as.vector() # 3.117334e-17 # 0
-
-    # sum(pr_bl < q) # 1080
-
-    # "/mnt/pers_disk/cat/pr_step3.nc" |>
-    #   read_ncdf(ncsub = cbind(start = c(xx, yy, 1), count = c(1, 1, NA))) -> pr_th_count
-
-    # pr_th_count |>
-    #   as_tibble() |>
-    #   filter(year(time) >= 1971, year(time) <= 2000) |>
-    #   pull(pr) |>
-    #   sum() # 1079 # 0
-
-    # tictoc::tic()
-    # "/mnt/pers_disk/cat/tasmax_step1.nc" |>
-    #   read_ncdf(ncsub = cbind(start = c(xx, yy, 1), count = c(1, 1, NA))) -> tmax_bl
-    # tictoc::toc()
-
-    # tmax_bl |>
-    #   pull() |>
-    #   as.vector() -> tmax_bl
-
-    # q <- quantile(tmax_bl, 0.9, type = 3) # 310.3214  # 309.89
-
-    # "/mnt/pers_disk/cat/tasmax_step2.nc" |>
-    #   read_ncdf(ncsub = cbind(start = c(xx, yy, 1), count = c(1, 1, NA)), make_time = F) |>
-    #   pull() |>
-    #   as.vector() # 310.3214 # 309.89
-
-    # sum(tmax_bl >= q) # 1080 # 1097
-
-    # "/mnt/pers_disk/cat/tasmax_step3.nc" |>
-    #   read_ncdf(ncsub = cbind(start = c(xx, yy, 1), count = c(1, 1, NA))) -> tmax_th_count
-
-    # tmax_th_count |>
-    #   as_tibble() |>
-    #   filter(year(time) >= 1971, year(time) <= 2000) |>
-    #   pull(tasmax) |>
-    #   sum() # 1081 # 1097
-
-    # bind_cols(
-    #   pr_th_count |> as_tibble(),
-    #   tmax_th_count |> as_tibble() |> select(tasmax)
-    # ) -> tb_join
-
-    # tb_join |>
-    #   units::drop_units() |>
-    #   mutate(j = if_else(pr == 1 & tasmax == 1, 1, 0)) |>
-    #   group_by(yr = year(time)) |>
-    #   summarize(j = sum(j)) -> tb_yr
-
-    # tb_yr |>
-    #   filter(yr >= 1971, yr <= 2000) |>
-    #   pull(j) |>
-    #   mean()
-
-    # "/mnt/bucket_mine/results/global_heat_pf/01_derived/AFR_days-gte-b90perc-tasmax-lt-b10perc-precip_yr_RegCM4_MPI-M-MPI-ESM-MR_v32.nc" |>
-    #   read_ncdf(ncsub = cbind(start = c(xx, yy, 1), count = c(1, 1, NA))) -> outfile
-
-    # outfile |>
-    #   as_tibble()
-
-    # # drc
-    # xx <- 213
-    # yy <- 225 # drc
-
-    # tictoc::tic()
-    # "/mnt/pers_disk/cat/pr_step1.nc" |>
-    #   read_ncdf(ncsub = cbind(start = c(xx, yy, 1), count = c(1, 1, NA))) -> pr_bl
-    # tictoc::toc()
-
-    # pr_bl |>
-    #   pull() |>
-    #   as.vector() -> pr_bl
-
-    # q <- quantile(pr_bl, 0.1, type = 3) # 2.921593e-07 # 3.415071e-06
-
-    # "/mnt/pers_disk/cat/pr_step2.nc" |>
-    #   read_ncdf(ncsub = cbind(start = c(213, 225, 1), count = c(1, 1, NA)), make_time = F) |>
-    #   pull() |>
-    #   as.vector() # 2.921593e-07 # 3.411919e-06
-
-    # sum(pr_bl < q) # 1080 # 1095
-
-    # "/mnt/pers_disk/cat/pr_step3.nc" |>
-    #   read_ncdf(ncsub = cbind(start = c(213, 225, 1), count = c(1, 1, NA))) -> pr_th_count
-
-    # pr_th_count |>
-    #   as_tibble() |>
-    #   filter(year(time) >= 1971, year(time) <= 2000) |>
-    #   pull(pr) |>
-    #   sum() # 1079 # 1094
-
-    # tictoc::tic()
-    # "/mnt/pers_disk/cat/tasmax_step1.nc" |>
-    #   read_ncdf(ncsub = cbind(start = c(213, 225, 1), count = c(1, 1, NA))) -> tmax_bl
-    # tictoc::toc()
-
-    # tmax_bl |>
-    #   pull() |>
-    #   as.vector() -> tmax_bl
-
-    # q <- quantile(tmax_bl, 0.9, type = 3) # 307.076  # 307.4936
-
-    # "/mnt/pers_disk/cat/tasmax_step2.nc" |>
-    #   read_ncdf(ncsub = cbind(start = c(213, 225, 1), count = c(1, 1, NA)), make_time = F) |>
-    #   pull() |>
-    #   as.vector() # 307.076 # 307.4936
-
-    # sum(tmax_bl >= q) # 1080 # 1097
-
-    # "/mnt/pers_disk/cat/tasmax_step3.nc" |>
-    #   read_ncdf(ncsub = cbind(start = c(213, 225, 1), count = c(1, 1, NA))) -> tmax_th_count
-
-    # tmax_th_count |>
-    #   as_tibble() |>
-    #   filter(year(time) >= 1971, year(time) <= 2000) |>
-    #   pull(tasmax) |>
-    #   sum() # 1081 # 1097
-
-    # bind_cols(
-    #   pr_th_count |> as_tibble(),
-    #   tmax_th_count |> as_tibble() |> select(tasmax)
-    # ) -> tb_join
-
-    # tb_join |>
-    #   units::drop_units() |>
-    #   mutate(j = if_else(pr == 1 & tasmax == 1, 1, 0)) |>
-    #   group_by(yr = year(time)) |>
-    #   summarize(j = sum(j)) -> tb_yr
-
-    # tb_yr |>
-    #   filter(yr >= 1971, yr <= 2000) |>
-    #   pull(j) |>
-    #   mean()
-
-    # "/mnt/bucket_mine/results/global_heat_pf/01_derived/AFR_days-gte-b90perc-tasmax-lt-b10perc-precip_yr_REMO2015_MOHC-HadGEM2-ES_v32.nc" |>
-    #   read_ncdf(ncsub = cbind(start = c(213, 225, 1), count = c(1, 1, NA))) -> outfile
-
-    # outfile |>
-    #   as_tibble()
-
-    # xx <- 173
-    # yy <- 390 # algeria
-    # xx <- 213
-    # yy <- 225 # guinea
-
-    # fs::dir_ls("/mnt/bucket_mine/results/global_heat_pf/01_derived/") |>
-    #   str_subset("AFR_days-gte-b90perc-tasmax-lt-b10perc-precip_yr") |>
-    #   str_subset("v32") |>
-    #   map(~ read_ncdf(.x, ncsub = cbind(start = c(xx, yy, 1), count = c(1, 1, NA)))) -> outfiles
-
-    # outfiles |>
-    #   map(\(s) {
-    #     s |>
-    #       as_tibble() |>
-    #       filter(year(time) >= 1971, year(time) <= 2000) |>
-    #       pull(pr) #|>
-    #     # mean()
-    #   }) -> tbs_bl
-
-    # tbs_bl |>
-    #   unlist() |>
-    #   quantile(c(0.05, 0.5, 0.95))
-
-    # "/mnt/bucket_mine/results/global_heat_pf/02_ensembled/AFR_days-gte-b90perc-tasmax-lt-b10perc-precip_ensemble.nc" |>
-    #   read_ncdf(ncsub = cbind(start = c(xx, yy, 1), count = c(1, 1, 1)))
-
-    # **********
 
     # joint condition
 
