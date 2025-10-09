@@ -1,8 +1,3 @@
-# CHOOSE VARIABLE(S) TO PROCESS
-# see table "scripts/tb_vars_all.R" to get id
-var_index <- c(26)
-
-
 # SETUP -----------------------------------------------------------------------
 
 library(tidyverse)
@@ -251,7 +246,8 @@ walk(derived_vars, function(derived_var) {
         dir_ensembled %>%
         list.files(full.names = T) %>%
         str_subset(dom) %>%
-        str_subset(str_glue("{derived_var}_ensemble.nc")) %>%
+        str_subset(str_glue("{derived_var}_ensemble")) %>%
+        str_subset(str_glue("_v{vrsion}.nc")) %>%
         read_ncdf %>%
         suppressMessages()
 
@@ -419,7 +415,7 @@ walk(derived_vars, function(derived_var) {
   # save as nc
   print(str_glue("  Saving"))
 
-  file_name <- str_glue("{dir_mosaicked}/{vol}/v3/{final_name}_v03.nc") # *******************
+  file_name <- str_glue("{dir_mosaicked}/{vol}/v3/{final_name}_v{vrsion}.nc")
   fn_write_nc(s, file_name, "wl")
 })
 

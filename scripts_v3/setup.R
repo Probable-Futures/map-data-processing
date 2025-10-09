@@ -1,3 +1,9 @@
+# choose variable(s) to process
+# see table "scripts/tb_vars_all.R" to get id
+var_index <- c(26)
+
+# specify version
+vrsion <- "3-01"
 
 # local disk
 dir_disk <- "/mnt/pers_disk"

@@ -1,8 +1,3 @@
-# CHOOSE VARIABLE(S) TO PROCESS
-# see table "scripts/tb_vars_all.R" to get id
-var_index <- c(26)
-
-
 # SETUP -----------------------------------------------------------------------
 
 library(tidyverse)

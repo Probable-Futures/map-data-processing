@@ -1,6 +1,6 @@
 fn_derived <- function(derived_var) {
   outfile <-
-    str_glue("{dir_derived}/{dom}_{derived_var}_yr_{rcm_}_{gcm_}_v3-01.nc") # v32 for new
+    str_glue("{dir_derived}/{dom}_{derived_var}_yr_{rcm_}_{gcm_}_v{vrsion}.nc") # v32 for new
 
   if (file.exists(outfile)) {
     file.remove(outfile)
@@ -528,7 +528,7 @@ fn_derived <- function(derived_var) {
       system(ignore.stdout = T, ignore.stderr = T)
 
     # WATER VOLUME: PRECIP + MAX. TEMPERATURE ---------------------------------
-  } else if (derived_var == "days-gte-b90perc-tasmax-lte-b10perc-precip") {
+  } else if (derived_var == "days-gte-b90perc-tasmax-lt-b10perc-precip") {
     future_walk(c("pr", "tasmax"), function(v) {
       # params
       if (v == "tasmax") {
