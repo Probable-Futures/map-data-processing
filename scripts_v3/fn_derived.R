@@ -530,28 +530,57 @@ fn_derived <- function(derived_var) {
     # WATER VOLUME: PRECIP + MAX. TEMPERATURE ---------------------------------
   } else if (derived_var == "days-gte-b90perc-tasmax-lt-b10perc-precip") {
     future_walk(c("pr", "tasmax"), function(v) {
-      # params
+      #
       if (v == "tasmax") {
+        #
         thresh <- 90
         command <- "gec"
+        f <- "tasmax_cat.nc"
+        #
       } else if (v == "pr") {
+        #
         thresh <- 10
-        command <- "ltc"
+        command <- "lec"
+
+        # convert to daily
+        str_glue("cdo mulc,864000 {dir_cat}/pr_cat.nc {dir_cat}/pr_cat2.nc") %>%
+          system(ignore.stdout = T, ignore.stderr = T)
+
+        fs::file_delete(str_glue("{dir_cat}/pr_cat.nc"))
+
+        # round
+        str_glue("cdo expr,'rounded_pr=floor(pr)' {dir_cat}/pr_cat2.nc {dir_cat}/pr_cat3.nc") |>
+          system(ignore.stdout = T, ignore.stderr = T)
+
+        fs::file_delete(str_glue("{dir_cat}/pr_cat2.nc"))
+
+        # we consider anything below 0.1 mm/day as 0, so we
+        # multiply by 86400 then by 10 then round with floor
+        f <- str_glue("pr_cat3.nc")
+        #
       }
 
       # subset baseline
-      str_glue("cdo selyear,1971/2000 {dir_cat}/{v}_cat.nc {dir_cat}/{v}_step1.nc") %>%
+      str_glue("cdo selyear,1971/2000 {dir_cat}/{f} {dir_cat}/{v}_step1.nc") %>%
         system(ignore.stdout = T, ignore.stderr = T)
 
-      # calculate percentile
+      # calculate (true) percentile
+      length_time_bl <-
+        str_glue("{dir_cat}/{v}_step1.nc") |>
+        read_ncdf(proxy = T) %>%
+        suppressMessages() %>%
+        {
+          dim(.)[3]
+        }
+
       str_glue(
-        "cdo timpctl,{thresh} {dir_cat}/{v}_step1.nc -timmin {dir_cat}/{v}_step1.nc -timmax {dir_cat}/{v}_step1.nc {dir_cat}/{v}_step2.nc"
-      ) %>%
+        "cdo seltimestep,{thresh*length_time_bl/100} -timsort {dir_cat}/{v}_step1.nc {dir_cat}/{v}_step2.nc"
+      ) |>
         system(ignore.stdout = T, ignore.stderr = T)
 
       # obtain no. days under/above baseline percentile
       str_glue(
-        "cdo -{command},0 -sub {dir_cat}/{v}_cat.nc {dir_cat}/{v}_step2.nc {dir_cat}/{v}_step3.nc"
+        "cdo -{command},0 -sub {dir_cat}/{f} {dir_cat}/{v}_step2.nc {dir_cat}/{v}_step3.nc"
       ) %>%
         system(ignore.stdout = T, ignore.stderr = T)
     })
