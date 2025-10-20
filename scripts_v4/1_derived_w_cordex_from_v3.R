@@ -5,17 +5,17 @@ library(tidyverse)
 library(stars)
 library(PCICt)
 
-box::use(functions / general_tools[...])
+source("scripts_v4/functions/general_tools.R")
+source("scripts_v4/functions/processing_functions.R")
 
 fs::dir_create(dir_data)
 
 
-source("scripts_v4/0_output_vars.R")
+source("scripts_v4/output_vars.R")
 source("scripts_v4/var_info_list.R")
 
 output_vars <-
-  output_vars[-c(13, 22)] |> # no winter temps in v3, dry hot days v3 is wrong
-  str_subset("wb", negate = T)
+  output_vars[-c(13, 22)] # no winter temps in v3p01, dry hot days v3p01 is wrong
 
 output_vars_v3 <-
   output_vars |>
@@ -81,8 +81,6 @@ for (iv in seq(length(output_vars))) {
       s_v3 <-
         read_mdim(f_v3)
 
-      dim_1 <- st_get_dimension_values(s_v3, 1)
-      dim_2 <- st_get_dimension_values(s_v3, 2)
       dim_time <-
         st_get_dimension_values(s_v3, "time") |>
         str_sub(end = 4) |>
@@ -90,33 +88,9 @@ for (iv in seq(length(output_vars))) {
 
       s_v3 <-
         s_v3 |>
-
-        st_set_dimensions(
-          1,
-          values = seq(
-            round(first(dim_1) - 0.1, 1),
-            round(last(dim_1) - 0.1, 1),
-            length.out = length(dim_1)
-          )
-        ) |>
-
-        st_set_dimensions(
-          2,
-          values = seq(
-            round(first(dim_2) - 0.1, 1),
-            round(last(dim_2) - 0.1, 1),
-            length.out = length(dim_2)
-          )
-        ) |>
-
-        st_set_dimensions(
-          3,
-          values = dim_time
-        ) |>
-
-        st_set_crs(4326) |>
-        suppressWarnings() |>
-        setNames(output_vars[iv])
+        fix_coords() |>
+        setNames(output_vars[iv]) |>
+        st_set_dimensions(3, values = dim_time)
 
       un_v3 <-
         s_v3 |> pull() |> units::deparse_unit()
@@ -142,7 +116,7 @@ for (iv in seq(length(output_vars))) {
       walk(seq(1971, 2099), \(yr) {
         f <-
           str_glue(
-            "{dir_data}/{rcm}_{gcm}_{dom}_{str_replace_all(output_vars[iv], '_', '-')}_yr_{yr}-01-01_v3.nc"
+            "{dir_data}/{rcm}_{gcm}_{dom}_{str_replace_all(output_vars[iv], '_', '-')}_yr_{yr}-01-01_v3-01.nc"
           )
 
         s_v3 |>

@@ -1,0 +1,518 @@
+---
+title: "Dry hot days and extreme precip"
+execute:
+  echo: false
+  fig-width: 10
+  fig-height: 7
+format:
+  revealjs:
+    self-contained: true
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r}
+#| label: setup
+#| include: false
+
+library(tidyverse)
+library(stars)
+sf_use_s2(F)
+
+```
+
+```{r}
+
+pth <- here::here('side_projs', 'reports')
+
+fn_gif <- function(plots, f_out, w = 6.5, h = 5){
+  
+  plots |> 
+    iwalk(\(p, i){
+      
+      ggsave(plot = p, 
+             width = w, 
+             height = h,
+             filename = str_glue("{pth}/tmp_{i}.png"))
+      
+    })
+  
+  str_glue("convert -delay 120 {pth}/tmp_*.png {pth}/{f_out}") |> 
+  system()
+  
+  fs::dir_ls(pth, regexp = "tmp_") |> 
+    fs::file_delete()
+  
+}
+
+
+land_pol <- 
+  "/mnt/bucket_mine/misc_data/physical/ne_110m_land/" |> 
+  st_read(quiet = T)
+
+land_df <- 
+  land_pol %>% 
+  st_coordinates %>% 
+  as_tibble %>% 
+  mutate(L = paste0(L1, "_", L2))
+
+v01 <- 
+  "/mnt/bucket_mine/results/global_heat_pf/03_mosaicked/water/v3/change-dry-hot-days_v3-01.nc" |>  
+  read_mdim() |> 
+  st_crop(land_pol)
+
+v03 <- 
+  "/mnt/bucket_mine/results/global_heat_pf/03_mosaicked/water/v3/change-dry-hot-days_v3-03.nc" |>  
+  read_mdim() |> 
+  st_crop(land_pol)
+
+dif <- v01 - v03
+
+```
+
+```{r}
+
+
+plots <- 
+  map2(list(v01, v03), c("Version 1", "Version 3"), \(s, v){
+    
+    tb <- 
+      s |> 
+      select(3) |> 
+      slice(wl, 1) |> 
+      as_tibble()
+    
+    ggplot() +
+      geom_raster(data = tb, aes(lon, lat, fill = perc50)) +
+      geom_path(data = land_df, aes(X, Y, group = L), linewidth = 0.25) +
+      coord_cartesian(ylim = c(-55, 75), xlim = c(-155, 160)) +
+      theme(axis.title = element_blank(),
+            legend.position = "bottom") +
+      labs(title = "Dry Hot Days [0.5° WL]",
+           subtitle = v) +
+      colorspace::scale_fill_continuous_sequential("plasma",
+                                                   na.value = "transparent",
+                                                   guide = guide_colorbar(barheight = 0.5,
+                                                                          barwidth = 24,
+                                                                          title.position = "left"),
+                                                   name = "days",
+                                                   rev = T,
+                                                   limits = c(0, 35),
+                                                   breaks = scales::breaks_width(5),
+                                                   oob = scales::squish)
+    
+  })
+
+fn_gif(plots, "anim1.gif")
+
+```
+![](anim1.gif)
+
+---
+
+```{r}
+#| fig-width: 6.5
+#| fig-height: 5
+
+tb <- 
+  dif |> 
+  select(3) |> 
+  slice(wl, 1) |> 
+  as_tibble() 
+  
+lims <- quantile(tb$perc50, c(0.01, 0.99), na.rm = T)
+ext <- range(tb$perc50, na.rm = T)  
+
+ggplot() +
+  geom_raster(data = tb, aes(lon, lat, fill = perc50)) +
+  geom_path(data = land_df, aes(X, Y, group = L), linewidth = 0.25) +
+  coord_cartesian(ylim = c(-55, 75), xlim = c(-155, 160)) +
+  theme(axis.title = element_blank(),
+        legend.position = "bottom") +
+  labs(title = "Dry Hot Days [0.5° WL]",
+       subtitle = "Difference v1 - v3: blue (red) = v1 more (less) days than v3",
+       caption = str_glue("Extreme vals: {ext[1]} - +{ext[2]}")) +
+  colorspace::scale_fill_binned_diverging(na.value = "transparent",
+                                          n.breaks = 7,
+                                          guide = guide_colorsteps(barheight = 0.5,
+                                                                   barwidth = 24,
+                                                                   title.position = "left"),
+                                          name = "days  ",
+                                          rev = T,
+                                          limits = c(lims[1], lims[2]),
+                                          oob = scales::squish
+  )
+
+```
+
+---
+
+```{r}
+
+
+tb <- 
+  dif |> 
+  select(3) |> 
+  slice(wl, c(2,3,4,6)) |> 
+  as_tibble()
+  
+lims <- quantile(tb$perc50, c(0.01, 0.99), na.rm = T)
+ext <- range(tb$perc50, na.rm = T)
+
+ggplot() +
+  geom_raster(data = tb, aes(lon, lat, fill = perc50)) +
+  geom_path(data = land_df, aes(X, Y, group = L), linewidth = 0.25) +
+  facet_wrap(~wl, nrow = 2) +
+  coord_cartesian(ylim = c(-55, 75), xlim = c(-155, 160)) +
+  theme(axis.title = element_blank(),
+        legend.position = "bottom") +
+  labs(title = "Change in Dry Hot Days",
+       subtitle = "Difference v1 - v3: blue (red) = v1 dries faster (slower) than v3",
+       caption = str_glue("Extreme vals: {ext[1]} - +{ext[2]}")
+       ) +
+  colorspace::scale_fill_binned_diverging(na.value = "transparent",
+                                          n.breaks = 7,
+                                          guide = guide_colorsteps(barheight = 0.5,
+                                                                   barwidth = 24,
+                                                                   title.position = "left"),
+                                          name = "days  ",
+                                          rev = T,
+                                          limits = c(lims[1], lims[2]),
+                                          oob = scales::squish
+  )
+
+```
+
+---
+
+```{r}
+
+plots <- 
+  map2(list(v01, v03), c("Version 1", "Version 3"), \(s, v){
+    
+    tb <- 
+      s |> 
+      select(3) |> 
+      slice(wl, c(2,3,4,6)) |> 
+      as_tibble() |> 
+      mutate(p = cut(perc50, c(-Inf, 0, 20, 40, 60, Inf)))
+    
+    ggplot() +
+      geom_raster(data = tb, aes(lon, lat, fill = p)) +
+      geom_path(data = land_df, aes(X, Y, group = L), linewidth = 0.25) +
+      facet_wrap(~wl, nrow = 2) +
+      coord_cartesian(ylim = c(-55, 75), xlim = c(-155, 160)) +
+      theme(axis.title = element_blank(),
+            legend.position = "bottom") +
+      labs(title = "Change in Dry Hot Days",
+           subtitle = v
+      ) +
+      colorspace::scale_fill_discrete_sequential("lajolla",
+                                                 na.value = "transparent",
+                                                 labels = c("0", "7", "30", "60"),
+                                                 guide = guide_colorsteps(barheight = 0.5,
+                                                                          barwidth = 24,
+                                                                          title.position = "left"),
+                                                 name = "days  ",
+                                                 rev = F)
+    
+  })
+
+
+fn_gif(plots, "anim2.gif")
+
+```
+![](anim2.gif)
+
+---
+
+```{r}
+
+dir_data <- "/mnt/pers_disk/results/"
+
+ff <-
+  dir_data |>
+  fs::dir_ls(regexp = "GLOBAL")
+
+s_0p5 <-
+  ff[1] |>
+  read_mdim() |>
+  # st_downsample(c(1, 1)) |>
+  units::drop_units() |>
+  st_crop(land_pol)
+
+tb_0p5 <-
+  s_0p5 |>
+  as_tibble()
+
+plots <-
+  map(c("perc_98", "perc_99", "perc_100"), \(perc) {
+    ggplot() +
+      geom_raster(
+        data = tb_0p5,
+        aes(lon, lat, fill = .data[[perc]])
+      ) +
+      geom_path(data = land_df, aes(X, Y, group = L), linewidth = 0.25) +
+      scale_fill_viridis_c(
+        limits = quantile(tb_0p5 |> pull(.data[[perc]]), c(0.02, 0.98), na.rm = TRUE),
+        oob = scales::squish,
+        na.value = "transparent",
+        name = "mm",
+        breaks = scales::breaks_width(100),
+        guide = guide_colorbar(
+          barheight = 0.5,
+          barwidth = 24,
+          title.position = "left" 
+        )
+      ) +
+      coord_cartesian(ylim = c(-55, 75), xlim = c(-155, 160)) +
+      theme(legend.position = "bottom", axis.title = element_blank()) +
+      labs(title = str_glue("{str_sub(perc, 6)}th percentile [0.5° WL]"))
+  })
+
+
+fn_gif(plots, "anim3.gif")
+
+```
+![](anim3.gif)
+
+---
+
+```{r}
+
+
+tb_0p5_sub <-
+  tb_0p5 |>
+  filter(lon <= -75, lon >= -101) |>
+  filter(lat <= 50, lat >= 24)
+
+plots <-
+  map(c("perc_98", "perc_99", "perc_100"), \(perc) {
+    
+    ggplot() +
+      geom_raster(
+        data = tb_0p5_sub,
+        aes(lon, lat, fill = .data[[perc]])
+      ) +
+      geom_path(data = land_df, aes(X, Y, group = L), linewidth = 0.25) +
+      scale_fill_viridis_c(
+        limits = quantile(tb_0p5_sub |> pull(.data[[perc]]), c(0.02, 0.98), na.rm = TRUE),
+        oob = scales::squish,
+        na.value = "transparent",
+        name = "mm",
+        guide = guide_colorbar(
+          barheight = 0.5,
+          barwidth = 24,
+          title.position = "left"
+        )
+      ) +
+      coord_equal(expand = F, xlim = c(-101, -75), ylim = c(24, 50)) +
+      theme(legend.position = "bottom", axis.title = element_blank()) +
+      labs(title = str_glue("{str_sub(perc, 6)}th percentile [0.5° WL]"))
+    
+  })
+
+fn_gif(plots, "anim4.gif")
+
+```
+
+![](anim4.gif)
+
+---
+
+```{r}
+
+s_3p0 <-
+  ff[6] |>
+  read_mdim() |>
+  units::drop_units() |>
+  st_crop(land_pol)
+
+tb_3p0 <-
+  s_3p0 |>
+  as_tibble()
+
+tb_3p0_sub <-
+  tb_3p0 |>
+  filter(lon <= -75, lon >= -101) |>
+  filter(lat <= 50, lat >= 24)
+
+
+tb <- 
+  full_join(
+    tb_0p5_sub |> 
+      select(lon, lat, "0.5" = perc_100),
+    tb_3p0_sub |> 
+      select(lon, lat, "3.0" = perc_100)
+  )
+
+plots <- 
+  map(c("0.5", "3.0"), \(perc) {
+    
+    ext <- round(max(tb |> pull({{perc}}), na.rm = T))
+    
+    ggplot() +
+      geom_raster(
+        data = tb,
+        aes(lon, lat, fill = .data[[perc]])
+      ) +
+      geom_path(data = land_df, aes(X, Y, group = L), linewidth = 0.25) +
+      scale_fill_viridis_c(
+        limits = quantile(tb |> pull(.data[[perc]]), c(0.01, 0.99), na.rm = TRUE),
+        oob = scales::squish,
+        na.value = "transparent",
+        name = "mm",
+        guide = guide_colorbar(
+          barheight = 0.5,
+          barwidth = 24,
+          title.position = "left"
+        )
+      ) +
+      coord_equal(expand = F, xlim = c(-101, -75), ylim = c(24, 50)) +
+      theme(legend.position = "bottom", axis.title = element_blank()) +
+      labs(subtitle = str_glue("{perc}°C WL"),
+           title = "100th percentile",
+           caption = str_glue("Max: {ext}"))
+    
+  })
+
+fn_gif(plots, "anim8.gif")
+
+
+```
+![](anim8.gif)
+
+---
+
+```{r}
+
+
+tb_dif <-
+  as_tibble(s_3p0 - s_0p5)
+
+tb_dif_sub <-
+  tb_dif |>
+  filter(lon <= -75, lon >= -101) |>
+  filter(lat <= 50, lat >= 24)
+
+plots <-
+  map(c("perc_98", "perc_99", "perc_100"), \(perc) {
+    
+    ggplot() +
+      geom_raster(
+        data = tb_dif_sub,
+        aes(lon, lat, fill = .data[[perc]])
+      ) +
+      geom_path(data = land_df, aes(X, Y, group = L), linewidth = 0.25) +
+      colorspace::scale_fill_continuous_diverging(
+        limits = quantile(tb_dif_sub |> pull(.data[[perc]]), c(0.02, 0.98), na.rm = TRUE),
+        oob = scales::squish,
+        na.value = "transparent",
+        name = "mm",
+        rev = T,
+        guide = guide_colorbar(
+          barheight = 0.5,
+          barwidth = 24,
+          title.position = "left"
+        )
+      ) +
+      coord_equal(expand = F, xlim = c(-101, -75), ylim = c(24, 50)) +
+      theme(legend.position = "bottom", axis.title = element_blank()) +
+      labs(title = str_glue("{str_sub(perc, 6)}th percentile"),
+           subtitle = "Difference 3.0°C - 0.5°C WL")
+    
+  })
+
+fn_gif(plots, "anim5.gif")
+
+```
+
+![](anim5.gif)
+
+---
+
+```{r}
+
+storm <- 
+  "/mnt/bucket_mine/results/global_heat_pf/03_mosaicked/water/v3/change-precip-100yr-storm_v03.nc" |> 
+  read_mdim() |> 
+  st_crop(land_pol)
+
+tb_dif <-
+  as_tibble(s_0p5 - (storm |> slice(wl, 1) |> st_warp(s_0p5) |> setNames("storm")))
+
+tb_dif_sub <-
+  tb_dif |>
+  filter(lon <= -75, lon >= -101) |>
+  filter(lat <= 50, lat >= 24)
+
+plots <-
+  map(c("perc_98", "perc_99", "perc_100"), \(perc) {
+    
+    ggplot() +
+      geom_raster(
+        data = tb_dif_sub,
+        aes(lon, lat, fill = .data[[perc]])
+      ) +
+      geom_path(data = land_df, aes(X, Y, group = L), linewidth = 0.25) +
+      colorspace::scale_fill_continuous_diverging(
+        limits = quantile(tb_dif_sub |> pull(.data[[perc]]), c(0.02, 0.98), na.rm = TRUE),
+        oob = scales::squish,
+        na.value = "transparent",
+        name = "mm",
+        rev = T,
+        guide = guide_colorbar(
+          barheight = 0.5,
+          barwidth = 24,
+          title.position = "left"
+        )
+      ) +
+      coord_equal(expand = F, xlim = c(-101, -75), ylim = c(24, 50)) +
+      theme(legend.position = "bottom", axis.title = element_blank()) +
+      labs(title = "Difference with 100-yr storm [0.5° WL]",
+           subtitle = str_glue("{str_sub(perc, 6)}th percentile - 100-yr storm:\nblue (red) = percentile map more (less) days than storm map"))
+    
+  })
+
+fn_gif(plots, "anim6.gif")
+
+```
+
+![](anim6.gif)
+
+---
+
+```{r}
+
+plots <-
+  map(c("perc_98", "perc_99", "perc_100"), \(perc) {
+    
+    ggplot() +
+      geom_raster(
+        data = tb_dif,
+        aes(lon, lat, fill = .data[[perc]])
+      ) +
+      geom_path(data = land_df, aes(X, Y, group = L), linewidth = 0.25) +
+      colorspace::scale_fill_continuous_diverging(
+        limits = quantile(tb_dif |> pull(.data[[perc]]), c(0.02, 0.98), na.rm = TRUE),
+        oob = scales::squish,
+        na.value = "transparent",
+        name = "mm",
+        rev = T,
+        guide = guide_colorbar(
+          barheight = 0.5,
+          barwidth = 24,
+          title.position = "left"
+        )
+      ) +
+      coord_cartesian(ylim = c(-55, 75), xlim = c(-155, 160)) +
+      theme(legend.position = "bottom", axis.title = element_blank()) +
+      labs(title = "Difference with 100-yr storm [0.5° WL]",
+           subtitle = str_glue("{str_sub(perc, 6)}th percentile - 100-yr storm:\nblue (red) = percentile map more (less) days than storm map"))
+    
+  })
+
+fn_gif(plots, "anim7.gif")
+```
+
+![](anim7.gif)
