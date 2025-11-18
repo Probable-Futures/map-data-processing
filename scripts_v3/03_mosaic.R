@@ -47,17 +47,19 @@ if (any(str_detect(derived_vars, "spei|fwi"))) {
 }
 
 
+dir_pr_perc <- str_glue("{dir_disk}/pr_perc")
+
 # TEMPLATE DOMAIN MAPS
 
 l_s_valid <-
   map(set_names(doms), function(dom) {
     # load map
     s <-
-      dir_ensembled %>%
+      dir_pr_perc %>%
       list.files(full.names = T) %>%
       str_subset(dom) %>%
-      str_subset(str_glue("{template_var}_ensemble.nc")) %>%
-      read_ncdf(ncsub = cbind(start = c(1, 1, 1), count = c(NA, NA, 1))) %>% # only 1 timestep
+      str_subset(".tif") |>
+      read_stars() %>%
       suppressMessages() %>%
       select(1) %>%
       adrop()
@@ -66,21 +68,21 @@ l_s_valid <-
     if (dom == "EAS") {
       s <-
         s %>%
-        filter(lon < 180)
+        filter(x < 180)
     } else if (dom == "AUS") {
       s1 <-
         s %>%
-        filter(lon < 180)
+        filter(x < 180)
 
       s2 <-
         s %>%
-        filter(lon >= 180)
+        filter(x >= 180)
 
       s2 <-
         st_set_dimensions(
           s2,
-          which = "lon",
-          values = st_get_dimension_values(s2, "lon", center = F) - 360
+          which = "x",
+          values = st_get_dimension_values(s2, "x", center = F) - 360
         ) %>%
         st_set_crs(4326)
 
@@ -221,291 +223,129 @@ if (any(str_detect(derived_vars, "spei|fwi"))) {
 
 # MOSAIC ----------------------------------------------------------------------
 
-# loop through variables
+final_name <-
+  tb_vars %>%
+  filter(var_derived == derived_var) %>%
+  pull(var_final)
 
-walk(derived_vars, function(derived_var) {
-  print(str_glue(" "))
-  print(str_glue("Mosaicking {derived_var}"))
+l_s <-
+  map(doms %>% set_names(), function(dom) {
+    print(dom)
 
-  final_name <-
-    tb_vars %>%
-    filter(var_derived == derived_var) %>%
-    pull(var_final)
-
-  vol <-
-    tb_vars %>%
-    filter(var_derived == derived_var) %>%
-    pull(volume)
-
-  l_s <-
-    map(doms %>% set_names(), function(dom) {
-      print(dom)
-
-      # load ensembled map
-      s <-
-        dir_ensembled %>%
-        list.files(full.names = T) %>%
-        str_subset(dom) %>%
-        str_subset(str_glue("{derived_var}_ensemble")) %>%
-        str_subset(str_glue("_v{vrsion}.nc")) %>%
-        read_ncdf %>%
-        suppressMessages()
-
-      # # fix domains trespassing the 360 meridian
-      if (dom == "EAS") {
-        s <-
-          s %>%
-          filter(lon < 180)
-      } else if (dom == "AUS") {
-        s1 <-
-          s %>%
-          filter(lon < 180)
-
-        s2 <-
-          s %>%
-          filter(lon >= 180)
-
-        s2 <-
-          st_set_dimensions(
-            s2,
-            which = "lon",
-            values = st_get_dimension_values(s2, "lon", center = F) - 360
-          ) %>%
-          st_set_crs(4326)
-
-        s <- list(AUS1 = s1, AUS2 = s2)
-      }
-
-      return(s)
-    })
-
-  l_s <- append(l_s[1:9], l_s[[10]])
-
-  l_mos_wl <-
-    # loop through warming levels
-    imap(wls, function(wl, wl_pos) {
-      print(str_glue("    {wl}"))
-
-      l_s_wl <-
-        l_s %>%
-        map(slice, wl, wl_pos) %>%
-        map(st_warp, global)
-
-      # APPLY WEIGHTS
-      l_s_weighted <-
-        map2(l_s_wl, l_s_weights, function(s, w) {
-          orig_names <- names(s)
-
-          map(orig_names, function(v_) {
-            c(s %>% select(all_of(v_)) %>% setNames("v"), w) %>%
-
-              mutate(v = v * weights) %>%
-              select(-weights) %>%
-              setNames(v_)
-          }) %>%
-            do.call(c, .)
-        })
-
-      # MOSAIC
-      mos <-
-        l_s_weighted %>%
-        map(merge, name = "stats") %>%
-        imap(~ setNames(.x, .y)) %>%
-        unname() %>%
-        do.call(c, .) %>%
-        merge(name = "doms") %>%
-
-        st_apply(
-          c(1, 2, 3),
-          function(foo) {
-            if (all(is.na(foo))) {
-              NA
-            } else {
-              sum(foo, na.rm = T)
-            }
-          },
-          FUTURE = F
-        ) %>%
-        setNames(wl)
-
-      return(mos)
-    })
-
-  if (str_detect(final_name, "change")) {
-    print(str_glue("Calculating differences"))
-
-    #
-    #   if(str_detect(final_name, "freq")){
-    #
-    #     l_mos_wl <-
-    #       l_mos_wl %>%
-    #       map(function(s){
-    #
-    #         (1-s) / 0.01
-    #
-    #       })
-    #
-    #   } else {
-    #
-    l_mos_wl <-
-      l_mos_wl[2:6] %>%
-      map(function(s) {
-        s - l_mos_wl[[1]]
-      }) %>%
-      {
-        append(list(l_mos_wl[[1]]), .)
-      }
-    #
-    #   }
-  }
-
-  # round
-  l_mos_wl <-
-    l_mos_wl %>%
-    map(function(s) {
-      wl <- names(s)
-
-      if (final_name == "change-water-balance") {
-        s %>%
-          rename(a = 1) %>%
-          mutate(a = round(a, 1)) %>%
-          setNames(wl)
-
-        # } else if(final_name == "intensity-heat-wave") {                            # ************** intensity !!!!
-        #
-        #   s %>%
-        #     rename(a = 1) %>%
-        #     mutate(a = round(a, 2)) %>%
-        #     setNames(wl)
-      } else if (str_detect(final_name, "drought") | str_detect(final_name, "heatwave")) {
-        s %>%
-          rename(a = 1) %>%
-          mutate(a = a * 100, a = as.integer(round(a))) %>%
-          setNames(wl)
-      } else {
-        s %>%
-          rename(a = 1) %>%
-          mutate(a = as.integer(round(a))) %>%
-          setNames(wl)
-      }
-    })
-
-  s <-
-    l_mos_wl %>%
-    do.call(c, .) %>%
-    merge(name = "wl") %>%
-    split("stats") %>%
-    st_set_dimensions(3, values = as.numeric(wls))
-
-  if (str_detect(derived_var, "spei|fwi")) {
-    print(str_glue("Removing deserts"))
-
-    s[barren == 1] <- -88888
-  }
-
-  s[is.na(land)] <- NA_integer_
-
-  if (str_detect(final_name, "drought")) {
-    print("removing metrics") # **********
+    # load ensembled map
     s <-
-      s %>%
-      select(mean, perc50)
-  }
+      dir_pr_perc %>%
+      list.files(full.names = T) %>%
+      str_subset(dom) %>%
+      str_subset("tif") %>%
+      read_stars %>%
+      suppressMessages() |>
+      adrop()
 
-  # save as nc
-  print(str_glue("  Saving"))
+    # # fix domains trespassing the 360 meridian
+    if (dom == "EAS") {
+      s <-
+        s %>%
+        filter(x < 180)
+    } else if (dom == "AUS") {
+      s1 <-
+        s %>%
+        filter(x < 180)
 
-  file_name <- str_glue("{dir_mosaicked}/{vol}/v3/{final_name}_v{vrsion}.nc")
-  fn_write_nc(s, file_name, "wl")
-})
+      s2 <-
+        s %>%
+        filter(x >= 180)
 
+      s2 <-
+        st_set_dimensions(
+          s2,
+          which = "x",
+          values = st_get_dimension_values(s2, "x", center = F) - 360
+        ) %>%
+        st_set_crs(4326)
 
-# Sync to s3 bucket
-walk(derived_vars, function(derived_var) {
-  # final_name <-
-  #   tb_vars %>%
-  #   filter(var_derived == derived_var) %>%
-  #   pull(var_final)
+      s <- list(AUS1 = s1, AUS2 = s2)
+    }
 
-  vol <-
-    tb_vars %>%
-    filter(var_derived == derived_var) %>%
-    pull(volume)
-
-  dir_gs <- str_glue("{dir_results_gs}/03_mosaicked/{vol}/v3")
-  dir_s3 <- str_glue("s3://global-pf-data-engineering/climate-data/v3/{vol}/03_mosaicked")
-
-  str_glue("gsutil rsync -r {dir_gs} {dir_s3}") %>%
-    system()
-})
-
-
-"/mnt/bucket_mine/results/global_heat_pf/03_mosaicked/heat/v3/ten-hottest-days_v03.nc" %>%
-  read_ncdf() -> a
-
-
-aa <-
-  map(1:6, function(i) {
-    a %>%
-      select(1) %>%
-      slice(wl, i)
+    return(s)
   })
 
-aa[2:6] %>%
-  map(function(s) {
-    s - aa[[1]]
-  }) %>%
+l_s <- append(l_s[1:9], l_s[[10]])
 
-  map(function(s) {
-    s %>%
-      pull() %>%
-      {
-        sum(. > 2, na.rm = T)
+l_s_wl <-
+  l_s %>%
+  map(st_warp, global)
+
+# APPLY WEIGHTS
+l_s_weighted <-
+  map2(l_s_wl, l_s_weights, function(s, w) {
+    orig_names <- names(s)
+
+    map(orig_names, function(v_) {
+      c(s %>% select(all_of(v_)) %>% setNames("v"), w) %>%
+
+        mutate(v = v * weights) %>%
+        select(-weights) %>%
+        setNames(v_)
+    }) %>%
+      do.call(c, .)
+  })
+
+# MOSAIC
+mos <-
+  l_s_weighted %>%
+  imap(~ setNames(.x, .y)) %>%
+  unname() %>%
+  do.call(c, .) %>%
+  merge(name = "doms") %>%
+
+  st_apply(
+    c(1, 2),
+    function(foo) {
+      if (all(is.na(foo))) {
+        NA
+      } else {
+        sum(foo, na.rm = T)
       }
-  })
+    },
+    FUTURE = F
+  ) |>
+  setNames("perc_10")
+
+write_stars(mos, str_glue("{dir_pr_perc}/mos.tif"))
 
 
-"/mnt/bucket_mine/results/global_heat_pf/03_mosaicked/heat/v3/ten-hottest-nights_v03_beta.nc" %>%
-  read_ncdf() -> b
+# plot
 
-bb <-
-  map(1:6, function(i) {
-    b %>%
-      select(1) %>%
-      slice(wl, i)
-  })
+land_pol <-
+  "/mnt/bucket_mine/misc_data/physical/ne_110m_land/" |>
+  st_read(quiet = T)
 
-bb[2:6] %>%
-  map(function(s) {
-    s - bb[[1]]
-  }) %>%
+land_df <-
+  land_pol %>%
+  st_coordinates %>%
+  as_tibble %>%
+  mutate(L = paste0(L1, "_", L2))
 
-  map(function(s) {
-    s %>%
-      pull() %>%
-      {
-        sum(. > 2, na.rm = T)
-      }
-  })
+tb <-
+  mos |>
+  as_tibble()
 
 
-l_mos_wl <-
-  l_mos_wl[2:6] %>%
-  map(function(s) {
-    s - l_mos_wl[[1]]
-  }) %>%
-  {
-    append(list(l_mos_wl[[1]]), .)
-  }
-
-do.call(c, c(l_mos_wl, along = "wl")) %>%
-  split("stats") %>%
-  st_set_dimensions(3, values = as.numeric(wls)) -> s
-
-file_name <- str_glue("{dir_mosaicked}/heat/v3/ten-hottest-days-diff_v03.nc")
-fn_write_nc(s, file_name, "wl")
-
-
-"/mnt/bucket_mine/results/global_heat_pf/03_mosaicked/heat/v3/" %>%
-  list.files(full.names = T) %>%
-  str_subset("beta")
+ggplot() +
+  geom_raster(data = tb, aes(lon, lat, fill = perc_10)) +
+  geom_path(data = land_df, aes(X, Y, group = L), linewidth = 0.25) +
+  coord_cartesian(ylim = c(-55, 75), xlim = c(-155, 160)) +
+  theme(axis.title = element_blank(), legend.position = "bottom") +
+  colorspace::scale_fill_binned_sequential(
+    "plasma",
+    na.value = "transparent",
+    guide = guide_colorsteps(barheight = 0.5, barwidth = 24, title.position = "left", even.steps = T),
+    name = "mm",
+    rev = T,
+    limits = c(-1, 10),
+    # trans = "exp",
+    breaks = c(-Inf, 0, 1, 2, 4, 8, Inf),
+    oob = scales::squish
+  ) +
+  labs(title = "10th percentile 1-day precip [WL: 0.5°C]")

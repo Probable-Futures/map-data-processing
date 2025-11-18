@@ -285,3 +285,36 @@ for (var_input in vars_input) {
     }
   }
 }
+
+
+source("scripts_v4/functions/processing_functions.R")
+
+ff <-
+  dir_derived |>
+  fs::dir_ls() |>
+  str_subset("precip-10th-percentile")
+
+dir_pr_perc <- str_glue("{dir_disk}/pr_perc")
+fs::dir_create(dir_pr_perc)
+
+walk(doms, \(dom) {
+  # dom = "SEA"
+
+  s <-
+    ff |>
+    str_subset(dom) |>
+    map(\(f) {
+      f |>
+        read_ncdf(make_time = F) |>
+        suppressMessages() |>
+        adrop()
+    })
+
+  s <-
+    do.call(c, c(s, along = "m")) |>
+    st_apply(c(1, 2), mean, .fname = "pr")
+
+  s <- fix_coords(s)
+
+  write_stars(s, str_glue("{dir_pr_perc}/{dom}.tif"))
+})

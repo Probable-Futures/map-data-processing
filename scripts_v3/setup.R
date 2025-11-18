@@ -1,6 +1,6 @@
 # choose variable(s) to process
 # see table "scripts/tb_vars_all.R" to get id
-var_index <- c(26)
+var_index <- c(31)
 
 # specify version
 vrsion <- "3-01"

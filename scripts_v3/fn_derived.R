@@ -627,6 +627,45 @@ fn_derived <- function(derived_var) {
     # obtain no. days above baseline percentile; then sum per year
     str_glue("cdo -yearsum -gec,0 -sub {dir_cat}/{v}_cat.nc {dir_cat}/{v}_step2.nc {outfile}") %>%
       system(ignore.stdout = T, ignore.stderr = T)
+
+    # EXTRA: precip 10th percentile (baseline only) -----------------------------
+  } else if (derived_var == "precip-10th-percentile") {
+    #
+    thresh <- 10
+
+    # convert to daily
+    str_glue("cdo mulc,864000 {dir_cat}/pr_cat.nc {dir_cat}/pr_cat2.nc") %>%
+      system(ignore.stdout = T, ignore.stderr = T)
+
+    fs::file_delete(str_glue("{dir_cat}/pr_cat.nc"))
+
+    # round
+    str_glue("cdo expr,'rounded_pr=floor(pr)' {dir_cat}/pr_cat2.nc {dir_cat}/pr_cat3.nc") |>
+      system(ignore.stdout = T, ignore.stderr = T)
+
+    fs::file_delete(str_glue("{dir_cat}/pr_cat2.nc"))
+
+    # we consider anything below 0.1 mm/day as 0, so we
+    # multiply by 86400 then by 10 then round with floor
+    f <- str_glue("pr_cat3.nc")
+
+    # subset baseline
+    str_glue("cdo selyear,1971/2000 {dir_cat}/pr_cat3.nc {dir_cat}/{v}_step1.nc") %>%
+      system(ignore.stdout = T, ignore.stderr = T)
+
+    # calculate (true) percentile
+    length_time_bl <-
+      str_glue("{dir_cat}/{v}_step1.nc") |>
+      read_ncdf(proxy = T) %>%
+      suppressMessages() %>%
+      {
+        dim(.)[3]
+      }
+
+    str_glue(
+      "cdo seltimestep,{thresh*length_time_bl/100} -timsort {dir_cat}/{v}_step1.nc {outfile}"
+    ) |>
+      system(ignore.stdout = T, ignore.stderr = T)
   }
 
   # ***************************************************************************

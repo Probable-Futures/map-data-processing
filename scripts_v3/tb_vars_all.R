@@ -31,5 +31,6 @@ tb_vars_all <-
     tibble(id = 27, var_final = "change-water-balance",                var_derived = "mean-spei",                                 var_input = "spei",                              change_import = "nothing",            parallel = "y", volume = "land"),
     tibble(id = 28, var_final = "likelihood-yearplus-drought",         var_derived = "prop-months-lte-neg0.8-spei",               var_input = "spei",                              change_import = "nothing",            parallel = "y", volume = "land"),
     tibble(id = 29, var_final = "likelihood-yearplus-extreme-drought", var_derived = "prop-months-lte-neg1.6-spei",               var_input = "spei",                              change_import = "nothing",            parallel = "y", volume = "land"),
-    tibble(id = 30, var_final = "change-wildfire-days",                var_derived = "days-gte-b95perc-fwi",                      var_input = "fire_weather_index",                change_import = "nothing",            parallel = "n", volume = "land")
+    tibble(id = 30, var_final = "change-wildfire-days",                var_derived = "days-gte-b95perc-fwi",                      var_input = "fire_weather_index",                change_import = "nothing",            parallel = "n", volume = "land"),
+    tibble(id = 31, var_final = "precip-10th-percentile",              var_derived = "precip-10th-percentile",                    var_input = "precipitation",                     change_import = "nothing",            parallel = "n", volume = "water")
   )
